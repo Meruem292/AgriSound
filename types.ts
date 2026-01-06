@@ -25,8 +25,7 @@ export interface Schedule {
   id: string;
   name: string;
   type: ScheduleType;
-  startTime?: string; // HH:mm
-  endTime?: string;   // HH:mm
+  time: string; // HH:mm - replaced startTime and endTime
   intervalMinutes?: number;
   soundIds: string[] | 'random';
   playbackCount: number;

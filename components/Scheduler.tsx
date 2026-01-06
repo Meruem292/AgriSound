@@ -31,9 +31,7 @@ const Scheduler: React.FC = () => {
         id: Math.random().toString(36).substr(2, 9),
         name: '',
         type: ScheduleType.FIXED,
-        startTime: '06:00',
-        endTime: '18:00',
-        intervalMinutes: 30,
+        time: '08:00',
         playbackCount: 1,
         isActive: true,
         soundIds: 'random',
@@ -45,7 +43,6 @@ const Scheduler: React.FC = () => {
 
   const handleSave = async () => {
     if (editingSchedule && editingSchedule.name) {
-      // Ensure playbackCount is at least 1
       const scheduleToSave = {
         ...editingSchedule,
         playbackCount: Math.max(1, editingSchedule.playbackCount || 1)
@@ -107,8 +104,8 @@ const Scheduler: React.FC = () => {
     <div className="p-6 space-y-6">
       <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-2xl font-black text-slate-900">Local Schedules</h2>
-          <p className="text-sm text-slate-500 font-medium">Automatic Playback</p>
+          <h2 className="text-2xl font-black text-slate-900">Field Schedules</h2>
+          <p className="text-sm text-slate-500 font-medium">Power-Efficient Triggering</p>
         </div>
         <button 
           onClick={() => handleOpenModal()}
@@ -122,8 +119,8 @@ const Scheduler: React.FC = () => {
         {schedules.length === 0 ? (
           <div className="bg-slate-100 rounded-3xl p-10 border-2 border-dashed border-slate-200 text-center">
             <Clock size={48} className="mx-auto text-slate-300 mb-4" />
-            <p className="text-slate-500 font-bold">No schedules saved</p>
-            <p className="text-slate-400 text-xs mt-1">Add a new window for the repeller</p>
+            <p className="text-slate-500 font-bold">No trigger times saved</p>
+            <p className="text-slate-400 text-xs mt-1">Add a specific time for the repeller to wake</p>
           </div>
         ) : (
           schedules.map(schedule => (
@@ -134,12 +131,12 @@ const Scheduler: React.FC = () => {
               <div className="flex justify-between items-start mb-4">
                 <div className="flex items-center gap-3">
                   <div className={`p-3 rounded-2xl ${schedule.isActive ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-400'}`}>
-                    {schedule.type === ScheduleType.FIXED ? <Clock size={20} /> : <Repeat size={20} />}
+                    <Clock size={20} />
                   </div>
                   <div>
                     <h3 className="font-bold text-slate-900">{schedule.name}</h3>
                     <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest">
-                      {schedule.type} • {schedule.playbackCount || 1}x Playback
+                      Plays {schedule.playbackCount || 1}x • {schedule.soundIds === 'random' ? 'Shuffle' : 'Custom Selection'}
                     </p>
                   </div>
                 </div>
@@ -163,10 +160,11 @@ const Scheduler: React.FC = () => {
               </div>
               <div className="flex justify-between items-end">
                 <div>
-                   <p className="text-lg font-black text-slate-800">
-                    {schedule.startTime} - {schedule.endTime}
-                  </p>
-                  <div className="flex gap-1 mt-2">
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="text-2xl font-black text-slate-900 tracking-tighter">{schedule.time}</span>
+                    <span className="text-[10px] font-black text-white bg-slate-900 px-2 py-0.5 rounded-md uppercase tracking-widest">Trigger</span>
+                  </div>
+                  <div className="flex gap-1">
                     {daysOfWeek.map((day, i) => (
                       <span key={i} className={`text-[9px] font-bold w-4 h-4 rounded-full flex items-center justify-center ${schedule.days.includes(i) ? 'bg-green-600 text-white' : 'bg-slate-100 text-slate-400'}`}>
                         {day}
@@ -175,13 +173,8 @@ const Scheduler: React.FC = () => {
                   </div>
                 </div>
                 <div className="flex flex-col items-end gap-1">
-                  {schedule.type === ScheduleType.INTERVAL && (
-                    <p className="text-[10px] font-bold text-slate-500 bg-slate-100 px-2 py-1 rounded-lg">
-                      Every {schedule.intervalMinutes}m
-                    </p>
-                  )}
                   <p className="text-[10px] font-bold text-green-700 bg-green-50 px-2 py-1 rounded-lg">
-                    {schedule.soundIds === 'random' ? 'Shuffle Mode' : 'Selected Files'}
+                    {schedule.soundIds === 'random' ? 'Random Selection' : 'Specific Library'}
                   </p>
                 </div>
               </div>
@@ -196,7 +189,7 @@ const Scheduler: React.FC = () => {
           <div className="bg-white w-full max-w-md rounded-[32px] shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
             <div className="px-6 py-5 border-b border-slate-100 flex justify-between items-center shrink-0">
               <h3 className="text-xl font-black text-slate-900">
-                {editingSchedule.name ? 'Edit Schedule' : 'New Schedule'}
+                {editingSchedule.name ? 'Edit Schedule' : 'New Trigger'}
               </h3>
               <button onClick={() => setIsModalOpen(false)} className="p-2 text-slate-400">
                 <X size={24} />
@@ -205,72 +198,33 @@ const Scheduler: React.FC = () => {
 
             <div className="p-6 space-y-6 overflow-y-auto custom-scrollbar">
               <div>
-                <label className="block text-[10px] font-black uppercase text-slate-400 tracking-widest mb-1.5 ml-1">Schedule Name</label>
+                <label className="block text-[10px] font-black uppercase text-slate-400 tracking-widest mb-1.5 ml-1">Label</label>
                 <input 
                   type="text"
-                  placeholder="e.g., Morning Deterrent"
+                  placeholder="e.g., Morning Alarm"
                   className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-green-500/20"
                   value={editingSchedule.name || ''}
                   onChange={(e) => setEditingSchedule({...editingSchedule, name: e.target.value})}
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-[10px] font-black uppercase text-slate-400 tracking-widest mb-1.5 ml-1">Start Time</label>
-                  <input 
-                    type="time"
-                    className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-green-500/20"
-                    value={editingSchedule.startTime || '06:00'}
-                    onChange={(e) => setEditingSchedule({...editingSchedule, startTime: e.target.value})}
-                  />
-                </div>
-                <div>
-                  <label className="block text-[10px] font-black uppercase text-slate-400 tracking-widest mb-1.5 ml-1">End Time</label>
-                  <input 
-                    type="time"
-                    className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-green-500/20"
-                    value={editingSchedule.endTime || '18:00'}
-                    onChange={(e) => setEditingSchedule({...editingSchedule, endTime: e.target.value})}
-                  />
-                </div>
+              <div>
+                <label className="block text-[10px] font-black uppercase text-slate-400 tracking-widest mb-1.5 ml-1 text-center">Schedule Time</label>
+                <input 
+                  type="time"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-6 text-3xl font-black text-center focus:outline-none focus:ring-2 focus:ring-green-500/20"
+                  value={editingSchedule.time || '08:00'}
+                  onChange={(e) => setEditingSchedule({...editingSchedule, time: e.target.value})}
+                />
+                <p className="text-center text-[10px] font-bold text-slate-400 mt-2 uppercase tracking-widest">Device will wake at exactly this time</p>
               </div>
 
               <div>
-                <label className="block text-[10px] font-black uppercase text-slate-400 tracking-widest mb-1.5 ml-1">Schedule Type</label>
-                <div className="grid grid-cols-2 gap-2">
-                  {[ScheduleType.FIXED, ScheduleType.INTERVAL].map((type) => (
-                    <button
-                      key={type}
-                      onClick={() => setEditingSchedule({...editingSchedule, type})}
-                      className={`py-3 px-4 rounded-2xl text-xs font-bold border transition-all ${editingSchedule.type === type ? 'bg-green-600 border-green-600 text-white shadow-md' : 'bg-slate-50 border-slate-200 text-slate-600'}`}
-                    >
-                      {type === ScheduleType.FIXED ? 'Fixed Window' : 'Interval Based'}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {editingSchedule.type === ScheduleType.INTERVAL && (
-                <div>
-                  <label className="block text-[10px] font-black uppercase text-slate-400 tracking-widest mb-1.5 ml-1">Interval (Minutes)</label>
-                  <input 
-                    type="number"
-                    min="1"
-                    className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-green-500/20"
-                    value={editingSchedule.intervalMinutes || 30}
-                    onChange={(e) => setEditingSchedule({...editingSchedule, intervalMinutes: parseInt(e.target.value)})}
-                  />
-                </div>
-              )}
-
-              {/* Playback Count Selection */}
-              <div>
-                <label className="block text-[10px] font-black uppercase text-slate-400 tracking-widest mb-1.5 ml-1">Playback Trigger Count</label>
+                <label className="block text-[10px] font-black uppercase text-slate-400 tracking-widest mb-1.5 ml-1">Playback Cycles</label>
                 <div className="flex gap-2">
                   <button
                     onClick={() => setEditingSchedule({...editingSchedule, playbackCount: 1})}
-                    className={`flex-1 py-3 px-4 rounded-2xl text-xs font-bold border transition-all ${editingSchedule.playbackCount === 1 ? 'bg-green-600 border-green-600 text-white' : 'bg-slate-50 border-slate-200 text-slate-600'}`}
+                    className={`flex-1 py-3 px-4 rounded-2xl text-xs font-bold border transition-all ${editingSchedule.playbackCount === 1 ? 'bg-green-600 border-green-600 text-white shadow-md' : 'bg-slate-50 border-slate-200 text-slate-600'}`}
                   >
                     Play Once
                   </button>
@@ -279,7 +233,7 @@ const Scheduler: React.FC = () => {
                     <input 
                       type="number"
                       min="2"
-                      placeholder="Repeats"
+                      placeholder="Repeat count"
                       className="w-full bg-transparent py-3 text-sm font-bold focus:outline-none"
                       value={editingSchedule.playbackCount && editingSchedule.playbackCount > 1 ? editingSchedule.playbackCount : ''}
                       onChange={(e) => setEditingSchedule({...editingSchedule, playbackCount: parseInt(e.target.value)})}
@@ -304,20 +258,20 @@ const Scheduler: React.FC = () => {
               </div>
 
               <div className="space-y-3">
-                <label className="block text-[10px] font-black uppercase text-slate-400 tracking-widest mb-1 ml-1">Playback Sounds</label>
+                <label className="block text-[10px] font-black uppercase text-slate-400 tracking-widest mb-1 ml-1">Repelling Audio</label>
                 
                 <div className="flex gap-2 mb-4">
                   <button
                     onClick={() => setEditingSchedule({...editingSchedule, soundIds: 'random'})}
                     className={`flex-1 py-3 px-4 rounded-2xl text-xs font-bold border flex items-center justify-center gap-2 transition-all ${editingSchedule.soundIds === 'random' ? 'bg-green-600 border-green-600 text-white shadow-md' : 'bg-slate-50 border-slate-200 text-slate-600'}`}
                   >
-                    <Shuffle size={16} /> Random Library
+                    <Shuffle size={16} /> Random Mix
                   </button>
                   <button
                     onClick={() => setEditingSchedule({...editingSchedule, soundIds: editingSchedule.soundIds === 'random' ? [] : editingSchedule.soundIds})}
                     className={`flex-1 py-3 px-4 rounded-2xl text-xs font-bold border flex items-center justify-center gap-2 transition-all ${editingSchedule.soundIds !== 'random' ? 'bg-green-600 border-green-600 text-white shadow-md' : 'bg-slate-50 border-slate-200 text-slate-600'}`}
                   >
-                    <Music size={16} /> Select Specific
+                    <Music size={16} /> Pick Files
                   </button>
                 </div>
 
@@ -325,7 +279,7 @@ const Scheduler: React.FC = () => {
                   <div className="space-y-2 max-h-48 overflow-y-auto pr-2 custom-scrollbar">
                     {sounds.length === 0 ? (
                       <p className="text-center py-4 text-xs font-bold text-slate-400 bg-slate-50 rounded-2xl border border-dashed border-slate-200">
-                        No sounds in library. Add some first!
+                        Library is empty.
                       </p>
                     ) : (
                       sounds.map(sound => (
@@ -363,7 +317,7 @@ const Scheduler: React.FC = () => {
                 className="flex-1 py-4 px-6 rounded-2xl text-sm font-bold text-white bg-green-600 shadow-lg active:scale-95 transition-transform flex items-center justify-center gap-2"
               >
                 <Check size={18} strokeWidth={3} />
-                Save Schedule
+                Save Trigger
               </button>
             </div>
           </div>
