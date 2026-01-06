@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { Home, Calendar, Music, ClipboardList, Wifi, WifiOff, HardDrive } from 'lucide-react';
+import { Home, Calendar, Music, ClipboardList, Wifi, WifiOff } from 'lucide-react';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -12,24 +12,32 @@ interface LayoutProps {
 const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTab, isOnline }) => {
   return (
     <div className="flex flex-col min-h-screen max-w-lg mx-auto bg-slate-50 shadow-xl relative">
-      {/* Enhanced Status Bar */}
-      <header className="sticky top-0 z-50 bg-white border-b border-slate-200 px-6 py-4 flex justify-between items-center shadow-sm">
+      {/* Official Branded Header */}
+      <header className="sticky top-0 z-50 bg-white border-b border-slate-200 px-6 py-2 flex justify-between items-center shadow-sm">
         <div className="flex items-center gap-2">
-          <div className="w-8 h-8 bg-green-600 rounded-lg flex items-center justify-center">
-            <div className="w-4 h-4 bg-white rounded-full animate-pulse" />
+          <img 
+            src="agriSound.png" 
+            alt="AgriSound Official Logo" 
+            className="h-12 w-12 object-contain"
+            onError={(e) => {
+              (e.target as HTMLImageElement).style.display = 'none';
+            }}
+          />
+          <div className="flex flex-col -gap-1">
+             <span className="text-xs font-black text-slate-400 uppercase tracking-[0.2em] leading-none">System</span>
+             <span className="text-sm font-bold text-slate-900 leading-tight">Field Hub</span>
           </div>
-          <h1 className="text-xl font-bold text-slate-900 tracking-tight">AgriSound</h1>
         </div>
         <div className="flex items-center gap-2">
           {isOnline ? (
             <div className="flex items-center gap-1.5 px-3 py-1 bg-green-50 text-green-700 rounded-full border border-green-100">
-              <Wifi size={14} strokeWidth={3} />
-              <span className="text-[10px] font-black uppercase tracking-wider">Online</span>
+              <div className="w-1.5 h-1.5 bg-green-600 rounded-full animate-pulse" />
+              <span className="text-[10px] font-black uppercase tracking-wider">Cloud Live</span>
             </div>
           ) : (
             <div className="flex items-center gap-1.5 px-3 py-1 bg-amber-50 text-amber-700 rounded-full border border-amber-100">
-              <WifiOff size={14} strokeWidth={3} />
-              <span className="text-[10px] font-black uppercase tracking-wider">Offline</span>
+              <WifiOff size={12} strokeWidth={3} />
+              <span className="text-[10px] font-black uppercase tracking-wider">Local Only</span>
             </div>
           )}
         </div>

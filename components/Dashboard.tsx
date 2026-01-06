@@ -34,7 +34,7 @@ const Dashboard: React.FC = () => {
     setIsTriggering(false);
   };
 
-  if (!device) return <div className="p-10 text-center text-slate-400">Loading Local Engine...</div>;
+  if (!device) return <div className="p-10 text-center text-slate-400">Initializing Core...</div>;
 
   const getStatusColor = (status: DeviceStatus) => {
     switch (status) {
@@ -47,55 +47,66 @@ const Dashboard: React.FC = () => {
   };
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-6 space-y-6 flex flex-col items-center">
+      {/* Hero Logo Section */}
+      <div className="w-full flex flex-col items-center justify-center pt-2 pb-4">
+        <img 
+          src="agriSound.png" 
+          alt="AgriSound Logo" 
+          className="w-40 h-40 object-contain drop-shadow-md"
+        />
+      </div>
+
       {/* Connection Status Banner */}
-      <div className={`p-4 rounded-3xl border flex items-center justify-between transition-colors duration-500 ${isOnline ? 'bg-green-600 border-green-700 text-white' : 'bg-slate-900 border-slate-800 text-white'}`}>
+      <div className={`w-full p-4 rounded-3xl border flex items-center justify-between transition-colors duration-500 ${isOnline ? 'bg-green-600 border-green-700 text-white' : 'bg-slate-900 border-slate-800 text-white'}`}>
         <div className="flex items-center gap-3">
           <div className="p-2 bg-white/20 rounded-xl">
             {isOnline ? <Wifi size={20} /> : <WifiOff size={20} />}
           </div>
           <div>
-            <h3 className="font-black text-xs uppercase tracking-widest">{isOnline ? 'Cloud Sync Active' : 'Field Mode (Offline)'}</h3>
+            <h3 className="font-black text-xs uppercase tracking-widest">{isOnline ? 'Cloud Linked' : 'Stand-Alone Mode'}</h3>
             <p className="text-[10px] text-white/70 font-bold uppercase">
-              {isOnline ? 'Schedules syncing to remote' : 'Using internal storage only'}
+              {isOnline ? 'Remote updates enabled' : 'Operating on local triggers'}
             </p>
           </div>
         </div>
       </div>
 
-      <section className="bg-white rounded-3xl p-6 shadow-sm border border-slate-100">
+      {/* System State Card */}
+      <section className="w-full bg-white rounded-3xl p-6 shadow-sm border border-slate-100">
         <div className="flex justify-between items-start mb-6">
           <div>
-            <h2 className="text-slate-400 font-bold text-xs uppercase tracking-widest mb-1">System State</h2>
+            <h2 className="text-slate-400 font-bold text-xs uppercase tracking-widest mb-1">Device Status</h2>
             <div className={`inline-flex items-center gap-2 px-3 py-1 rounded-full border text-sm font-bold ${getStatusColor(device.status)}`}>
               <div className={`w-2 h-2 rounded-full ${device.status === DeviceStatus.ACTIVE ? 'bg-green-600 animate-ping' : 'bg-current'}`} />
               {device.status}
             </div>
           </div>
-          <Activity className="text-slate-300" size={32} />
+          <Activity className="text-slate-200" size={32} />
         </div>
 
         <div className="grid grid-cols-2 gap-4">
           <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
             <div className="flex items-center gap-2 text-slate-500 mb-1">
               <Clock size={16} />
-              <span className="text-xs font-semibold">Last Sync</span>
+              <span className="text-xs font-semibold uppercase tracking-tighter">Last Sync</span>
             </div>
-            <p className="text-sm font-bold text-slate-800">
+            <p className="text-sm font-black text-slate-800">
               {new Date(device.lastSyncTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
             </p>
           </div>
           <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
             <div className="flex items-center gap-2 text-slate-500 mb-1">
               <ShieldAlert size={16} />
-              <span className="text-xs font-semibold">Last Sound</span>
+              <span className="text-xs font-semibold uppercase tracking-tighter">Broadcast</span>
             </div>
-            <p className="text-sm font-bold text-slate-800 truncate">{device.lastSoundPlayed}</p>
+            <p className="text-sm font-black text-slate-800 truncate">{device.lastSoundPlayed}</p>
           </div>
         </div>
       </section>
 
-      <section className="flex flex-col items-center justify-center space-y-4 pt-4">
+      {/* Primary Control Button */}
+      <section className="flex flex-col items-center justify-center space-y-4 pt-6">
         <button
           onClick={handleManualPlay}
           disabled={device.status === DeviceStatus.WAKING || device.status === DeviceStatus.ACTIVE || isTriggering}
@@ -114,6 +125,9 @@ const Dashboard: React.FC = () => {
             {device.status === DeviceStatus.ACTIVE ? 'Broadcasting...' : 'Play Now'}
           </span>
         </button>
+        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">
+          Manual wake-up triggers immediate playback<br/>and returns to sleep after completion
+        </p>
       </section>
     </div>
   );
