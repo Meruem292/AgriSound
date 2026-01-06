@@ -25,12 +25,13 @@ export interface Schedule {
   id: string;
   name: string;
   type: ScheduleType;
-  time: string; // HH:mm - replaced startTime and endTime
+  time: string; // HH:mm
   intervalMinutes?: number;
   soundIds: string[] | 'random';
   playbackCount: number;
   isActive: boolean;
   days: number[]; // 0-6 (Sun-Sat)
+  lastRunTimestamp?: number; // To prevent double triggers
 }
 
 export interface PlaybackLog {

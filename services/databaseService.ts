@@ -132,27 +132,46 @@ export const databaseService = {
     await localDB.put(STORES.LOGS, newLog);
   },
 
-  triggerManualPlay: async () => {
+  performPlayback: async (triggerType: 'manual' | 'scheduled', scheduleId?: string) => {
+    // 1. Wake Sequence
     await databaseService.updateDeviceState({ status: DeviceStatus.WAKING });
     await new Promise(r => setTimeout(r, 1500));
+    
+    // 2. Start Playback
     await databaseService.updateDeviceState({ status: DeviceStatus.ACTIVE });
     
     const sounds = await databaseService.getSounds();
     const soundName = sounds.length > 0 ? sounds[Math.floor(Math.random() * sounds.length)].name : 'No Sound Found';
     
+    // 3. Log the Activity
     await databaseService.addLog({
       timestamp: Date.now(),
       soundName,
-      triggerType: 'manual',
+      triggerType,
       status: 'success'
     });
 
+    // 4. Update Runtime State
     await databaseService.updateDeviceState({ 
       lastWakeTime: Date.now(),
       lastSoundPlayed: soundName
     });
 
-    await new Promise(r => setTimeout(r, 3000));
+    // 5. If it's a schedule, update the last run time to prevent loops
+    if (scheduleId) {
+      const schedules = await databaseService.getSchedules();
+      const sched = schedules.find(s => s.id === scheduleId);
+      if (sched) {
+        await databaseService.saveSchedule({ ...sched, lastRunTimestamp: Date.now() });
+      }
+    }
+
+    // 6. Return to Sleep after "playback" simulation
+    await new Promise(r => setTimeout(r, 4000));
     await databaseService.updateDeviceState({ status: DeviceStatus.SLEEPING, lastSyncTime: Date.now() });
+  },
+
+  triggerManualPlay: async () => {
+    await databaseService.performPlayback('manual');
   }
 };
