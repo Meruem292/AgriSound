@@ -9,36 +9,40 @@ interface LayoutProps {
   isOnline: boolean;
 }
 
+const AgriSoundLogo = () => (
+  <svg viewBox="0 0 100 100" className="h-10 w-10" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <circle cx="50" cy="50" r="48" stroke="#2d5a27" strokeWidth="4" />
+    <circle cx="50" cy="50" r="44" fill="white" />
+    {/* Megaphone */}
+    <path d="M40 55 L52 65 L52 45 L40 55 Z" fill="#2d5a27" />
+    <rect x="36" y="52" width="6" height="6" rx="1" fill="#2d5a27" />
+    {/* Sound Waves */}
+    <path d="M58 45 Q64 55 58 65" stroke="#3b82f6" strokeWidth="2" strokeLinecap="round" />
+    <path d="M64 40 Q72 55 64 70" stroke="#f59e0b" strokeWidth="2" strokeLinecap="round" />
+    <path d="M70 35 Q80 55 70 75" stroke="#3b82f6" strokeWidth="2" strokeLinecap="round" />
+    {/* Bird Silhouette */}
+    <path d="M35 40 C30 35 32 28 38 25 C42 28 48 32 50 38 C45 36 38 38 35 40 Z" fill="#2d5a27" />
+    <path d="M38 25 C45 22 55 25 58 30 C55 35 50 38 48 38" fill="#2d5a27" />
+  </svg>
+);
+
 const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTab, isOnline }) => {
   return (
     <div className="flex flex-col min-h-screen max-w-lg mx-auto bg-slate-50 shadow-xl relative text-slate-900">
       {/* Official Branded Header */}
       <header className="sticky top-0 z-50 bg-white border-b border-slate-200 px-6 py-3 flex justify-between items-center shadow-sm">
         <div className="flex items-center gap-3">
-          <img 
-            src="./agriSound.png" 
-            alt="AgriSound" 
-            className="h-10 w-10 object-contain"
-            onError={(e) => {
-              // Fallback to a styled div if image fails
-              const target = e.target as HTMLImageElement;
-              target.style.display = 'none';
-              const parent = target.parentElement;
-              if (parent && !parent.querySelector('.logo-fallback')) {
-                const fallback = document.createElement('div');
-                fallback.className = 'logo-fallback w-10 h-10 bg-green-600 rounded-xl flex items-center justify-center text-white font-black text-xs';
-                fallback.innerText = 'AS';
-                parent.prepend(fallback);
-              }
-            }}
-          />
-          <span className="text-lg font-black text-slate-900 tracking-tighter">AgriSound</span>
+          <AgriSoundLogo />
+          <div className="flex flex-col">
+            <span className="text-lg font-black text-slate-900 leading-none tracking-tighter">AgriSound</span>
+            <span className="text-[9px] font-bold text-green-700 uppercase tracking-widest leading-none mt-0.5">Field Hub</span>
+          </div>
         </div>
         <div className="flex items-center gap-2">
           {isOnline ? (
             <div className="flex items-center gap-1.5 px-3 py-1 bg-green-50 text-green-700 rounded-full border border-green-100">
               <div className="w-1.5 h-1.5 bg-green-600 rounded-full animate-pulse" />
-              <span className="text-[10px] font-black uppercase tracking-wider">Connected</span>
+              <span className="text-[10px] font-black uppercase tracking-wider">Linked</span>
             </div>
           ) : (
             <div className="flex items-center gap-1.5 px-3 py-1 bg-amber-50 text-amber-700 rounded-full border border-amber-100">
