@@ -1,21 +1,26 @@
 
 import React, { useState, useEffect } from 'react';
-import { Plus, Clock, Trash2, Edit2, X, Check, Calendar as CalendarIcon, Repeat } from 'lucide-react';
+import { Plus, Clock, Trash2, Edit2, X, Check, Calendar as CalendarIcon, Repeat, Music, Shuffle } from 'lucide-react';
 import { databaseService } from '../services/databaseService';
-import { Schedule, ScheduleType } from '../types';
+import { Schedule, ScheduleType, SoundFile } from '../types';
 
 const Scheduler: React.FC = () => {
   const [schedules, setSchedules] = useState<Schedule[]>([]);
+  const [sounds, setSounds] = useState<SoundFile[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingSchedule, setEditingSchedule] = useState<Partial<Schedule> | null>(null);
 
   useEffect(() => {
-    loadSchedules();
+    loadData();
   }, []);
 
-  const loadSchedules = async () => {
-    const data = await databaseService.getSchedules();
-    setSchedules(data);
+  const loadData = async () => {
+    const [schedData, soundData] = await Promise.all([
+      databaseService.getSchedules(),
+      databaseService.getSounds()
+    ]);
+    setSchedules(schedData);
+    setSounds(soundData);
   };
 
   const handleOpenModal = (schedule?: Schedule) => {
@@ -42,7 +47,7 @@ const Scheduler: React.FC = () => {
       await databaseService.saveSchedule(editingSchedule as Schedule);
       setIsModalOpen(false);
       setEditingSchedule(null);
-      await loadSchedules();
+      await loadData();
     } else {
       alert("Please provide a name for the schedule.");
     }
@@ -53,17 +58,15 @@ const Scheduler: React.FC = () => {
     if (!target) return;
     const updated = { ...target, isActive: !target.isActive };
     await databaseService.saveSchedule(updated);
-    await loadSchedules();
+    await loadData();
   };
 
   const deleteSchedule = async (id: string) => {
     if (confirm('Delete this local schedule?')) {
       await databaseService.deleteSchedule(id);
-      await loadSchedules();
+      await loadData();
     }
   };
-
-  const daysOfWeek = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 
   const toggleDay = (dayIndex: number) => {
     if (!editingSchedule) return;
@@ -73,6 +76,26 @@ const Scheduler: React.FC = () => {
       : [...currentDays, dayIndex].sort();
     setEditingSchedule({ ...editingSchedule, days: newDays });
   };
+
+  const toggleSoundSelection = (soundId: string) => {
+    if (!editingSchedule) return;
+    let currentIds = editingSchedule.soundIds;
+    
+    // If it was random, switch to specific array
+    if (currentIds === 'random') {
+      currentIds = [soundId];
+    } else {
+      if (currentIds.includes(soundId)) {
+        currentIds = currentIds.filter(id => id !== soundId);
+        // If empty, default back to random or keep empty? Let's keep empty and prompt user
+      } else {
+        currentIds = [...currentIds, soundId];
+      }
+    }
+    setEditingSchedule({ ...editingSchedule, soundIds: currentIds });
+  };
+
+  const daysOfWeek = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 
   return (
     <div className="p-6 space-y-6">
@@ -110,7 +133,7 @@ const Scheduler: React.FC = () => {
                   <div>
                     <h3 className="font-bold text-slate-900">{schedule.name}</h3>
                     <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest">
-                      {schedule.type} • {schedule.soundIds === 'random' ? 'Random Mix' : 'Specific File'}
+                      {schedule.type} • {schedule.soundIds === 'random' ? 'Random Mix' : `${schedule.soundIds.length} Selected Sounds`}
                     </p>
                   </div>
                 </div>
@@ -160,7 +183,7 @@ const Scheduler: React.FC = () => {
       {isModalOpen && editingSchedule && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
           <div className="bg-white w-full max-w-md rounded-[32px] shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
-            <div className="px-6 py-5 border-b border-slate-100 flex justify-between items-center">
+            <div className="px-6 py-5 border-b border-slate-100 flex justify-between items-center shrink-0">
               <h3 className="text-xl font-black text-slate-900">
                 {editingSchedule.name ? 'Edit Schedule' : 'New Schedule'}
               </h3>
@@ -169,7 +192,7 @@ const Scheduler: React.FC = () => {
               </button>
             </div>
 
-            <div className="p-6 space-y-5 overflow-y-auto">
+            <div className="p-6 space-y-6 overflow-y-auto">
               <div>
                 <label className="block text-[10px] font-black uppercase text-slate-400 tracking-widest mb-1.5 ml-1">Schedule Name</label>
                 <input 
@@ -244,9 +267,57 @@ const Scheduler: React.FC = () => {
                   ))}
                 </div>
               </div>
+
+              {/* Sound Selection Section */}
+              <div className="space-y-3">
+                <label className="block text-[10px] font-black uppercase text-slate-400 tracking-widest mb-1 ml-1">Playback Sounds</label>
+                
+                <div className="flex gap-2 mb-4">
+                  <button
+                    onClick={() => setEditingSchedule({...editingSchedule, soundIds: 'random'})}
+                    className={`flex-1 py-3 px-4 rounded-2xl text-xs font-bold border flex items-center justify-center gap-2 transition-all ${editingSchedule.soundIds === 'random' ? 'bg-green-600 border-green-600 text-white shadow-md' : 'bg-slate-50 border-slate-200 text-slate-600'}`}
+                  >
+                    <Shuffle size={16} /> Random Library
+                  </button>
+                  <button
+                    onClick={() => setEditingSchedule({...editingSchedule, soundIds: editingSchedule.soundIds === 'random' ? [] : editingSchedule.soundIds})}
+                    className={`flex-1 py-3 px-4 rounded-2xl text-xs font-bold border flex items-center justify-center gap-2 transition-all ${editingSchedule.soundIds !== 'random' ? 'bg-green-600 border-green-600 text-white shadow-md' : 'bg-slate-50 border-slate-200 text-slate-600'}`}
+                  >
+                    <Music size={16} /> Select Specific
+                  </button>
+                </div>
+
+                {editingSchedule.soundIds !== 'random' && (
+                  <div className="space-y-2 max-h-48 overflow-y-auto pr-2 custom-scrollbar">
+                    {sounds.length === 0 ? (
+                      <p className="text-center py-4 text-xs font-bold text-slate-400 bg-slate-50 rounded-2xl border border-dashed border-slate-200">
+                        No sounds in library. Add some first!
+                      </p>
+                    ) : (
+                      sounds.map(sound => (
+                        <div 
+                          key={sound.id}
+                          onClick={() => toggleSoundSelection(sound.id)}
+                          className={`flex items-center justify-between p-3 rounded-2xl border transition-all cursor-pointer ${Array.isArray(editingSchedule.soundIds) && editingSchedule.soundIds.includes(sound.id) ? 'bg-green-50 border-green-200' : 'bg-white border-slate-100 hover:border-slate-200'}`}
+                        >
+                          <div className="flex items-center gap-3">
+                            <Music size={14} className={Array.isArray(editingSchedule.soundIds) && editingSchedule.soundIds.includes(sound.id) ? 'text-green-600' : 'text-slate-300'} />
+                            <span className={`text-xs font-bold ${Array.isArray(editingSchedule.soundIds) && editingSchedule.soundIds.includes(sound.id) ? 'text-green-900' : 'text-slate-600'}`}>
+                              {sound.name}
+                            </span>
+                          </div>
+                          <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${Array.isArray(editingSchedule.soundIds) && editingSchedule.soundIds.includes(sound.id) ? 'bg-green-600 border-green-600' : 'border-slate-200'}`}>
+                            {Array.isArray(editingSchedule.soundIds) && editingSchedule.soundIds.includes(sound.id) && <Check size={12} className="text-white" strokeWidth={4} />}
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
 
-            <div className="p-6 bg-slate-50 border-t border-slate-100 flex gap-3">
+            <div className="p-6 bg-slate-50 border-t border-slate-100 flex gap-3 shrink-0">
               <button 
                 onClick={() => setIsModalOpen(false)}
                 className="flex-1 py-4 px-6 rounded-2xl text-sm font-bold text-slate-500 bg-white border border-slate-200 active:scale-95 transition-transform"
@@ -264,6 +335,19 @@ const Scheduler: React.FC = () => {
           </div>
         </div>
       )}
+      <style>{`
+        .custom-scrollbar::-webkit-scrollbar {
+          width: 4px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+          background: #f1f5f9;
+          border-radius: 10px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+          background: #cbd5e1;
+          border-radius: 10px;
+        }
+      `}</style>
     </div>
   );
 };
