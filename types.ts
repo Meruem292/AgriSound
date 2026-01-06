@@ -29,6 +29,7 @@ export interface Schedule {
   endTime?: string;   // HH:mm
   intervalMinutes?: number;
   soundIds: string[] | 'random';
+  playbackCount: number;
   isActive: boolean;
   days: number[]; // 0-6 (Sun-Sat)
 }

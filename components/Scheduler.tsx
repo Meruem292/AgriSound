@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { Plus, Clock, Trash2, Edit2, X, Check, Calendar as CalendarIcon, Repeat, Music, Shuffle } from 'lucide-react';
+import { Plus, Clock, Trash2, Edit2, X, Check, Calendar as CalendarIcon, Repeat, Music, Shuffle, RotateCcw } from 'lucide-react';
 import { databaseService } from '../services/databaseService';
 import { Schedule, ScheduleType, SoundFile } from '../types';
 
@@ -34,6 +34,7 @@ const Scheduler: React.FC = () => {
         startTime: '06:00',
         endTime: '18:00',
         intervalMinutes: 30,
+        playbackCount: 1,
         isActive: true,
         soundIds: 'random',
         days: [1, 2, 3, 4, 5],
@@ -44,7 +45,12 @@ const Scheduler: React.FC = () => {
 
   const handleSave = async () => {
     if (editingSchedule && editingSchedule.name) {
-      await databaseService.saveSchedule(editingSchedule as Schedule);
+      // Ensure playbackCount is at least 1
+      const scheduleToSave = {
+        ...editingSchedule,
+        playbackCount: Math.max(1, editingSchedule.playbackCount || 1)
+      };
+      await databaseService.saveSchedule(scheduleToSave as Schedule);
       setIsModalOpen(false);
       setEditingSchedule(null);
       await loadData();
@@ -81,15 +87,15 @@ const Scheduler: React.FC = () => {
     if (!editingSchedule) return;
     let currentIds = editingSchedule.soundIds;
     
-    // If it was random, switch to specific array
     if (currentIds === 'random') {
       currentIds = [soundId];
     } else {
-      if (currentIds.includes(soundId)) {
-        currentIds = currentIds.filter(id => id !== soundId);
-        // If empty, default back to random or keep empty? Let's keep empty and prompt user
-      } else {
-        currentIds = [...currentIds, soundId];
+      if (Array.isArray(currentIds)) {
+        if (currentIds.includes(soundId)) {
+          currentIds = currentIds.filter(id => id !== soundId);
+        } else {
+          currentIds = [...currentIds, soundId];
+        }
       }
     }
     setEditingSchedule({ ...editingSchedule, soundIds: currentIds });
@@ -133,7 +139,7 @@ const Scheduler: React.FC = () => {
                   <div>
                     <h3 className="font-bold text-slate-900">{schedule.name}</h3>
                     <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest">
-                      {schedule.type} • {schedule.soundIds === 'random' ? 'Random Mix' : `${schedule.soundIds.length} Selected Sounds`}
+                      {schedule.type} • {schedule.playbackCount || 1}x Playback
                     </p>
                   </div>
                 </div>
@@ -168,11 +174,16 @@ const Scheduler: React.FC = () => {
                     ))}
                   </div>
                 </div>
-                {schedule.type === ScheduleType.INTERVAL && (
-                  <p className="text-[10px] font-bold text-slate-500 bg-slate-100 px-2 py-1 rounded-lg">
-                    Every {schedule.intervalMinutes}m
+                <div className="flex flex-col items-end gap-1">
+                  {schedule.type === ScheduleType.INTERVAL && (
+                    <p className="text-[10px] font-bold text-slate-500 bg-slate-100 px-2 py-1 rounded-lg">
+                      Every {schedule.intervalMinutes}m
+                    </p>
+                  )}
+                  <p className="text-[10px] font-bold text-green-700 bg-green-50 px-2 py-1 rounded-lg">
+                    {schedule.soundIds === 'random' ? 'Shuffle Mode' : 'Selected Files'}
                   </p>
-                )}
+                </div>
               </div>
             </div>
           ))
@@ -192,7 +203,7 @@ const Scheduler: React.FC = () => {
               </button>
             </div>
 
-            <div className="p-6 space-y-6 overflow-y-auto">
+            <div className="p-6 space-y-6 overflow-y-auto custom-scrollbar">
               <div>
                 <label className="block text-[10px] font-black uppercase text-slate-400 tracking-widest mb-1.5 ml-1">Schedule Name</label>
                 <input 
@@ -253,6 +264,30 @@ const Scheduler: React.FC = () => {
                 </div>
               )}
 
+              {/* Playback Count Selection */}
+              <div>
+                <label className="block text-[10px] font-black uppercase text-slate-400 tracking-widest mb-1.5 ml-1">Playback Trigger Count</label>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setEditingSchedule({...editingSchedule, playbackCount: 1})}
+                    className={`flex-1 py-3 px-4 rounded-2xl text-xs font-bold border transition-all ${editingSchedule.playbackCount === 1 ? 'bg-green-600 border-green-600 text-white' : 'bg-slate-50 border-slate-200 text-slate-600'}`}
+                  >
+                    Play Once
+                  </button>
+                  <div className={`flex-[1.5] flex items-center bg-slate-50 border rounded-2xl px-3 gap-2 ${editingSchedule.playbackCount && editingSchedule.playbackCount > 1 ? 'border-green-600' : 'border-slate-200'}`}>
+                    <RotateCcw size={16} className={editingSchedule.playbackCount && editingSchedule.playbackCount > 1 ? 'text-green-600' : 'text-slate-400'} />
+                    <input 
+                      type="number"
+                      min="2"
+                      placeholder="Repeats"
+                      className="w-full bg-transparent py-3 text-sm font-bold focus:outline-none"
+                      value={editingSchedule.playbackCount && editingSchedule.playbackCount > 1 ? editingSchedule.playbackCount : ''}
+                      onChange={(e) => setEditingSchedule({...editingSchedule, playbackCount: parseInt(e.target.value)})}
+                    />
+                  </div>
+                </div>
+              </div>
+
               <div>
                 <label className="block text-[10px] font-black uppercase text-slate-400 tracking-widest mb-1.5 ml-1">Active Days</label>
                 <div className="flex justify-between">
@@ -268,7 +303,6 @@ const Scheduler: React.FC = () => {
                 </div>
               </div>
 
-              {/* Sound Selection Section */}
               <div className="space-y-3">
                 <label className="block text-[10px] font-black uppercase text-slate-400 tracking-widest mb-1 ml-1">Playback Sounds</label>
                 
