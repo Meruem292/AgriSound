@@ -20,40 +20,54 @@ const App: React.FC = () => {
     window.addEventListener('offline', handleOffline);
 
     // --- AUTOMATED SCHEDULING WORKER ---
-    // This heartbeat runs in the background while the app is open
     const checkSchedules = async () => {
-      const deviceState = await databaseService.getDeviceState();
-      
-      // Don't trigger if already busy
-      if (deviceState.status !== DeviceStatus.SLEEPING) return;
-
-      const schedules = await databaseService.getSchedules();
-      const now = new Date();
-      const currentHHmm = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
-      const currentDay = now.getDay();
-
-      for (const schedule of schedules) {
-        if (!schedule.isActive) continue;
-
-        // Check if current time matches schedule time
-        const timeMatch = schedule.time === currentHHmm;
-        // Check if today is an active day
-        const dayMatch = schedule.days.includes(currentDay);
+      try {
+        const deviceState = await databaseService.getDeviceState();
         
-        // Prevent re-triggering within the same minute
-        const lastRun = schedule.lastRunTimestamp ? new Date(schedule.lastRunTimestamp) : null;
-        const alreadyRanThisMinute = lastRun && 
-          lastRun.getHours() === now.getHours() && 
-          lastRun.getMinutes() === now.getMinutes();
+        // Skip if device is already performing a task
+        if (deviceState.status !== DeviceStatus.SLEEPING) return;
 
-        if (timeMatch && dayMatch && !alreadyRanThisMinute) {
-          console.log(`Triggering scheduled playback: ${schedule.name}`);
-          databaseService.performPlayback('scheduled', schedule.id);
+        const schedules = await databaseService.getSchedules();
+        const now = new Date();
+        
+        // Robust HH:mm formatting matching the <input type="time"> format
+        const hours = now.getHours().toString().padStart(2, '0');
+        const minutes = now.getMinutes().toString().padStart(2, '0');
+        const currentHHmm = `${hours}:${minutes}`;
+        const currentDay = now.getDay();
+
+        // Debug logging (Viewable in browser console)
+        console.log(`[AgriSound Worker] Tick: ${currentHHmm} | Day: ${currentDay}`);
+
+        for (const schedule of schedules) {
+          if (!schedule.isActive) continue;
+
+          const timeMatch = schedule.time === currentHHmm;
+          const dayMatch = schedule.days.includes(currentDay);
+          
+          // Last run check to prevent multiple triggers within the same minute
+          const lastRun = schedule.lastRunTimestamp ? new Date(schedule.lastRunTimestamp) : null;
+          const alreadyRanThisMinute = lastRun && 
+            lastRun.getHours() === now.getHours() && 
+            lastRun.getMinutes() === now.getMinutes() &&
+            lastRun.getDate() === now.getDate();
+
+          if (timeMatch && dayMatch && !alreadyRanThisMinute) {
+            console.log(`[AgriSound Worker] SUCCESS: Triggering "${schedule.name}" at ${currentHHmm}`);
+            // Fire and forget to not block the worker loop
+            databaseService.performPlayback('scheduled', schedule.id);
+          }
         }
+      } catch (error) {
+        console.error("[AgriSound Worker] Error checking schedules:", error);
       }
     };
 
-    const workerInterval = setInterval(checkSchedules, 30000); // Check every 30 seconds
+    // Check every 10 seconds for high reliability
+    const workerInterval = setInterval(checkSchedules, 10000); 
+    
+    // Run an initial check on mount
+    checkSchedules();
 
     return () => {
       window.removeEventListener('online', handleOnline);
