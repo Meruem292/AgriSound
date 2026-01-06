@@ -1,0 +1,7 @@
+{
+  "name": "AgriSound - Intelligent Bird Repeller",
+  "description": "A high-efficiency, mobile-first control system for agricultural bird-repelling sound arrays, featuring smart scheduling, anti-habituation logic, and power-saving management.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
