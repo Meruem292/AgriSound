@@ -11,33 +11,39 @@ interface LayoutProps {
 
 const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTab, isOnline }) => {
   return (
-    <div className="flex flex-col min-h-screen max-w-lg mx-auto bg-slate-50 shadow-xl relative">
+    <div className="flex flex-col min-h-screen max-w-lg mx-auto bg-slate-50 shadow-xl relative text-slate-900">
       {/* Official Branded Header */}
-      <header className="sticky top-0 z-50 bg-white border-b border-slate-200 px-6 py-2 flex justify-between items-center shadow-sm">
-        <div className="flex items-center gap-2">
+      <header className="sticky top-0 z-50 bg-white border-b border-slate-200 px-6 py-3 flex justify-between items-center shadow-sm">
+        <div className="flex items-center gap-3">
           <img 
-            src="agriSound.png" 
-            alt="AgriSound Official Logo" 
-            className="h-12 w-12 object-contain"
+            src="./agriSound.png" 
+            alt="AgriSound" 
+            className="h-10 w-10 object-contain"
             onError={(e) => {
-              (e.target as HTMLImageElement).style.display = 'none';
+              // Fallback to a styled div if image fails
+              const target = e.target as HTMLImageElement;
+              target.style.display = 'none';
+              const parent = target.parentElement;
+              if (parent && !parent.querySelector('.logo-fallback')) {
+                const fallback = document.createElement('div');
+                fallback.className = 'logo-fallback w-10 h-10 bg-green-600 rounded-xl flex items-center justify-center text-white font-black text-xs';
+                fallback.innerText = 'AS';
+                parent.prepend(fallback);
+              }
             }}
           />
-          <div className="flex flex-col -gap-1">
-             <span className="text-xs font-black text-slate-400 uppercase tracking-[0.2em] leading-none">System</span>
-             <span className="text-sm font-bold text-slate-900 leading-tight">Field Hub</span>
-          </div>
+          <span className="text-lg font-black text-slate-900 tracking-tighter">AgriSound</span>
         </div>
         <div className="flex items-center gap-2">
           {isOnline ? (
             <div className="flex items-center gap-1.5 px-3 py-1 bg-green-50 text-green-700 rounded-full border border-green-100">
               <div className="w-1.5 h-1.5 bg-green-600 rounded-full animate-pulse" />
-              <span className="text-[10px] font-black uppercase tracking-wider">Cloud Live</span>
+              <span className="text-[10px] font-black uppercase tracking-wider">Connected</span>
             </div>
           ) : (
             <div className="flex items-center gap-1.5 px-3 py-1 bg-amber-50 text-amber-700 rounded-full border border-amber-100">
               <WifiOff size={12} strokeWidth={3} />
-              <span className="text-[10px] font-black uppercase tracking-wider">Local Only</span>
+              <span className="text-[10px] font-black uppercase tracking-wider">Local</span>
             </div>
           )}
         </div>

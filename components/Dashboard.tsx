@@ -34,7 +34,7 @@ const Dashboard: React.FC = () => {
     setIsTriggering(false);
   };
 
-  if (!device) return <div className="p-10 text-center text-slate-400">Initializing Core...</div>;
+  if (!device) return <div className="p-10 text-center text-slate-400 font-bold uppercase tracking-widest animate-pulse">Initializing System...</div>;
 
   const getStatusColor = (status: DeviceStatus) => {
     switch (status) {
@@ -49,26 +49,44 @@ const Dashboard: React.FC = () => {
   return (
     <div className="p-6 space-y-6 flex flex-col items-center">
       {/* Hero Logo Section */}
-      <div className="w-full flex flex-col items-center justify-center pt-2 pb-4">
-        <img 
-          src="agriSound.png" 
-          alt="AgriSound Logo" 
-          className="w-40 h-40 object-contain drop-shadow-md"
-        />
+      <div className="w-full flex flex-col items-center justify-center pt-4 pb-2">
+        <div className="relative group">
+          <div className="absolute -inset-1 bg-gradient-to-r from-green-400 to-emerald-600 rounded-full blur opacity-25 group-hover:opacity-40 transition duration-1000"></div>
+          <img 
+            src="./agriSound.png" 
+            alt="AgriSound Logo" 
+            className="relative w-48 h-48 object-contain drop-shadow-xl"
+            onError={(e) => {
+               // Fallback if image doesn't exist
+               const target = e.target as HTMLImageElement;
+               target.style.display = 'none';
+               const parent = target.parentElement;
+               if (parent && !parent.querySelector('.hero-fallback')) {
+                 const fallback = document.createElement('div');
+                 fallback.className = 'hero-fallback relative w-48 h-48 bg-white border-8 border-green-600 rounded-full flex flex-col items-center justify-center shadow-xl';
+                 fallback.innerHTML = '<span class="text-green-600 font-black text-2xl tracking-tighter">AGRI</span><span class="text-green-800 font-black text-2xl tracking-tighter">SOUND</span>';
+                 parent.appendChild(fallback);
+               }
+            }}
+          />
+        </div>
       </div>
 
       {/* Connection Status Banner */}
-      <div className={`w-full p-4 rounded-3xl border flex items-center justify-between transition-colors duration-500 ${isOnline ? 'bg-green-600 border-green-700 text-white' : 'bg-slate-900 border-slate-800 text-white'}`}>
+      <div className={`w-full p-4 rounded-3xl border flex items-center justify-between transition-colors duration-500 ${isOnline ? 'bg-green-600 border-green-700 text-white shadow-lg shadow-green-200' : 'bg-slate-900 border-slate-800 text-white'}`}>
         <div className="flex items-center gap-3">
           <div className="p-2 bg-white/20 rounded-xl">
             {isOnline ? <Wifi size={20} /> : <WifiOff size={20} />}
           </div>
           <div>
-            <h3 className="font-black text-xs uppercase tracking-widest">{isOnline ? 'Cloud Linked' : 'Stand-Alone Mode'}</h3>
-            <p className="text-[10px] text-white/70 font-bold uppercase">
-              {isOnline ? 'Remote updates enabled' : 'Operating on local triggers'}
+            <h3 className="font-black text-[10px] uppercase tracking-widest">{isOnline ? 'Network Linked' : 'Offline Mode'}</h3>
+            <p className="text-[12px] text-white/90 font-bold">
+              {isOnline ? 'Syncing with cloud' : 'Operating locally'}
             </p>
           </div>
+        </div>
+        <div className="text-[10px] font-black bg-white/20 px-2 py-1 rounded-md uppercase tracking-tighter">
+          v1.0.4
         </div>
       </div>
 
@@ -76,58 +94,64 @@ const Dashboard: React.FC = () => {
       <section className="w-full bg-white rounded-3xl p-6 shadow-sm border border-slate-100">
         <div className="flex justify-between items-start mb-6">
           <div>
-            <h2 className="text-slate-400 font-bold text-xs uppercase tracking-widest mb-1">Device Status</h2>
-            <div className={`inline-flex items-center gap-2 px-3 py-1 rounded-full border text-sm font-bold ${getStatusColor(device.status)}`}>
+            <h2 className="text-slate-400 font-bold text-[10px] uppercase tracking-widest mb-1.5">Current Operating Mode</h2>
+            <div className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full border text-[12px] font-black uppercase tracking-wider ${getStatusColor(device.status)}`}>
               <div className={`w-2 h-2 rounded-full ${device.status === DeviceStatus.ACTIVE ? 'bg-green-600 animate-ping' : 'bg-current'}`} />
               {device.status}
             </div>
           </div>
-          <Activity className="text-slate-200" size={32} />
+          <Activity className="text-slate-200" size={28} />
         </div>
 
         <div className="grid grid-cols-2 gap-4">
           <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
-            <div className="flex items-center gap-2 text-slate-500 mb-1">
-              <Clock size={16} />
-              <span className="text-xs font-semibold uppercase tracking-tighter">Last Sync</span>
+            <div className="flex items-center gap-2 text-slate-500 mb-1.5">
+              <Clock size={14} />
+              <span className="text-[9px] font-black uppercase tracking-widest">Last Activity</span>
             </div>
             <p className="text-sm font-black text-slate-800">
               {new Date(device.lastSyncTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
             </p>
           </div>
           <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
-            <div className="flex items-center gap-2 text-slate-500 mb-1">
-              <ShieldAlert size={16} />
-              <span className="text-xs font-semibold uppercase tracking-tighter">Broadcast</span>
+            <div className="flex items-center gap-2 text-slate-500 mb-1.5">
+              <ShieldAlert size={14} />
+              <span className="text-[9px] font-black uppercase tracking-widest">Active Sound</span>
             </div>
-            <p className="text-sm font-black text-slate-800 truncate">{device.lastSoundPlayed}</p>
+            <p className="text-sm font-black text-slate-800 truncate">{device.lastSoundPlayed || 'Silent'}</p>
           </div>
         </div>
       </section>
 
       {/* Primary Control Button */}
-      <section className="flex flex-col items-center justify-center space-y-4 pt-6">
+      <section className="flex flex-col items-center justify-center space-y-6 pt-4 pb-8">
         <button
           onClick={handleManualPlay}
           disabled={device.status === DeviceStatus.WAKING || device.status === DeviceStatus.ACTIVE || isTriggering}
           className={`
-            relative w-56 h-56 rounded-full flex flex-col items-center justify-center transition-all duration-500 shadow-2xl active:scale-95
+            relative w-52 h-52 rounded-full flex flex-col items-center justify-center transition-all duration-500 shadow-2xl active:scale-90
             ${device.status === DeviceStatus.ACTIVE || device.status === DeviceStatus.WAKING
               ? 'bg-green-600 text-white cursor-not-allowed scale-105' 
-              : 'bg-white text-slate-900 border-8 border-green-500 hover:bg-green-50'}
+              : 'bg-white text-slate-900 border-[10px] border-green-500 hover:border-green-400 hover:bg-green-50'}
           `}
         >
+          <div className={`absolute inset-0 rounded-full border-4 border-dashed border-green-200/50 ${device.status === DeviceStatus.ACTIVE ? 'animate-[spin_10s_linear_infinite]' : ''}`} />
           {isTriggering && (
-             <div className="absolute inset-0 rounded-full border-4 border-white/30 border-t-white animate-spin" />
+             <div className="absolute inset-2 rounded-full border-4 border-green-600/20 border-t-green-600 animate-spin" />
           )}
-          <Power size={64} className={device.status === DeviceStatus.ACTIVE ? 'animate-pulse' : ''} />
-          <span className="mt-4 text-lg font-black uppercase tracking-tighter">
-            {device.status === DeviceStatus.ACTIVE ? 'Broadcasting...' : 'Play Now'}
+          <Power size={56} className={device.status === DeviceStatus.ACTIVE ? 'animate-pulse' : 'text-green-600'} />
+          <span className="mt-4 text-sm font-black uppercase tracking-widest">
+            {device.status === DeviceStatus.ACTIVE ? 'Broadcasting' : 'Trigger Now'}
           </span>
         </button>
-        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">
-          Manual wake-up triggers immediate playback<br/>and returns to sleep after completion
-        </p>
+        <div className="flex flex-col items-center gap-1">
+          <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] text-center">
+            Manual Override Mode
+          </p>
+          <p className="text-[9px] text-slate-300 font-bold uppercase text-center max-w-[200px]">
+            Device will return to deep sleep after playback is completed
+          </p>
+        </div>
       </section>
     </div>
   );
