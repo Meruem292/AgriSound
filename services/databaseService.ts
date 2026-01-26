@@ -2,7 +2,7 @@
 import { DeviceState, DeviceStatus, Schedule, SoundFile, PlaybackLog, ScheduleType } from '../types';
 
 const DB_NAME = 'AgriSoundDB';
-const DB_VERSION = 1;
+const DB_VERSION = 3; // Bumped to 3 to force schema recreation
 const STORES = {
   SOUNDS: 'sounds',
   SCHEDULES: 'schedules',
@@ -16,12 +16,18 @@ class LocalDB {
   async init(): Promise<void> {
     return new Promise((resolve, reject) => {
       const request = indexedDB.open(DB_NAME, DB_VERSION);
-      request.onupgradeneeded = () => {
+      request.onupgradeneeded = (event: IDBVersionChangeEvent) => {
         const db = request.result;
+        
+        // Recreate the state store if upgrading to ensure keyPath: 'id' exists
+        if (event.oldVersion < 3 && db.objectStoreNames.contains(STORES.STATE)) {
+          db.deleteObjectStore(STORES.STATE);
+        }
+
         if (!db.objectStoreNames.contains(STORES.SOUNDS)) db.createObjectStore(STORES.SOUNDS, { keyPath: 'id' });
         if (!db.objectStoreNames.contains(STORES.SCHEDULES)) db.createObjectStore(STORES.SCHEDULES, { keyPath: 'id' });
         if (!db.objectStoreNames.contains(STORES.LOGS)) db.createObjectStore(STORES.LOGS, { keyPath: 'id' });
-        if (!db.objectStoreNames.contains(STORES.STATE)) db.createObjectStore(STORES.STATE);
+        if (!db.objectStoreNames.contains(STORES.STATE)) db.createObjectStore(STORES.STATE, { keyPath: 'id' });
       };
       request.onsuccess = () => {
         this.db = request.result;
@@ -40,11 +46,23 @@ class LocalDB {
     });
   }
 
-  async put(storeName: string, item: any): Promise<void> {
+  async get<T>(storeName: string, id: string): Promise<T | null> {
     return new Promise((resolve) => {
+      const transaction = this.db!.transaction(storeName, 'readonly');
+      const store = transaction.objectStore(storeName);
+      const request = store.get(id);
+      request.onsuccess = () => resolve(request.result || null);
+    });
+  }
+
+  async put(storeName: string, item: any): Promise<void> {
+    return new Promise((resolve, reject) => {
       const transaction = this.db!.transaction(storeName, 'readwrite');
       const store = transaction.objectStore(storeName);
-      store.put(item);
+      // Ensure item has an ID if it's the state store
+      if (storeName === STORES.STATE && !item.id) item.id = 'main';
+      const request = store.put(item);
+      request.onerror = () => reject(request.error);
       transaction.oncomplete = () => resolve();
     });
   }
@@ -102,7 +120,7 @@ export const databaseService = {
 
   getDeviceState: async (): Promise<DeviceState> => {
     await databaseService.ensureInit();
-    const states = await localDB.getAll<any>(STORES.STATE);
+    const state = await localDB.get<any>(STORES.STATE, 'main');
     const defaultState: DeviceState = {
       status: DeviceStatus.SLEEPING,
       batteryLevel: 84,
@@ -110,13 +128,13 @@ export const databaseService = {
       lastSoundPlayed: 'None',
       lastSyncTime: Date.now()
     };
-    return states.length > 0 ? states[0] : defaultState;
+    return state ? state : defaultState;
   },
 
   updateDeviceState: async (updates: Partial<DeviceState>) => {
     const current = await databaseService.getDeviceState();
-    const next = { ...current, ...updates };
-    await localDB.put(STORES.STATE, { ...next, id: 'main' });
+    const next = { ...current, ...updates, id: 'main' };
+    await localDB.put(STORES.STATE, next);
     return next;
   },
 
@@ -133,42 +151,73 @@ export const databaseService = {
   },
 
   performPlayback: async (triggerType: 'manual' | 'scheduled', scheduleId?: string) => {
-    // 1. Wake Sequence
-    await databaseService.updateDeviceState({ status: DeviceStatus.WAKING });
-    await new Promise(r => setTimeout(r, 1500));
+    await databaseService.ensureInit();
     
-    // 2. Start Playback
-    await databaseService.updateDeviceState({ status: DeviceStatus.ACTIVE });
-    
-    const sounds = await databaseService.getSounds();
-    const soundName = sounds.length > 0 ? sounds[Math.floor(Math.random() * sounds.length)].name : 'No Sound Found';
-    
-    // 3. Log the Activity
-    await databaseService.addLog({
-      timestamp: Date.now(),
-      soundName,
-      triggerType,
-      status: 'success'
-    });
+    const allSounds = await databaseService.getSounds();
+    if (allSounds.length === 0) {
+      console.warn("Playback triggered but no sounds are available.");
+      return;
+    }
 
-    // 4. Update Runtime State
-    await databaseService.updateDeviceState({ 
-      lastWakeTime: Date.now(),
-      lastSoundPlayed: soundName
-    });
+    let targetSounds: SoundFile[] = allSounds;
+    let cycles = 1;
 
-    // 5. If it's a schedule, update the last run time to prevent loops
     if (scheduleId) {
       const schedules = await databaseService.getSchedules();
       const sched = schedules.find(s => s.id === scheduleId);
       if (sched) {
-        await databaseService.saveSchedule({ ...sched, lastRunTimestamp: Date.now() });
+        cycles = sched.playbackCount || 1;
+        if (Array.isArray(sched.soundIds) && sched.soundIds.length > 0) {
+          const filtered = allSounds.filter(s => (sched.soundIds as string[]).includes(s.id));
+          if (filtered.length > 0) targetSounds = filtered;
+        }
       }
     }
 
-    // 6. Return to Sleep after "playback" simulation
-    await new Promise(r => setTimeout(r, 4000));
-    await databaseService.updateDeviceState({ status: DeviceStatus.SLEEPING, lastSyncTime: Date.now() });
+    await databaseService.updateDeviceState({ status: DeviceStatus.WAKING });
+    await new Promise(r => setTimeout(r, 1000));
+    await databaseService.updateDeviceState({ status: DeviceStatus.ACTIVE });
+
+    for (let i = 0; i < cycles; i++) {
+      const sound = targetSounds[Math.floor(Math.random() * targetSounds.length)];
+      await databaseService.updateDeviceState({ 
+        lastSoundPlayed: sound.name,
+        lastWakeTime: Date.now()
+      });
+
+      const audioUrl = URL.createObjectURL(sound.blob);
+      const audio = new Audio(audioUrl);
+
+      await new Promise((resolve) => {
+        audio.onplay = () => {
+          databaseService.addLog({
+            timestamp: Date.now(),
+            soundName: sound.name,
+            triggerType,
+            status: 'success'
+          });
+        };
+        audio.onended = () => {
+          URL.revokeObjectURL(audioUrl);
+          resolve(true);
+        };
+        audio.onerror = () => {
+          URL.revokeObjectURL(audioUrl);
+          resolve(false);
+        };
+        audio.play().catch(err => {
+          console.error("Playback blocked. Use the ARM button.", err);
+          resolve(false);
+        });
+      });
+
+      if (i < cycles - 1) await new Promise(r => setTimeout(r, 1500));
+    }
+
+    await databaseService.updateDeviceState({ 
+      status: DeviceStatus.SLEEPING, 
+      lastSyncTime: Date.now() 
+    });
   },
 
   triggerManualPlay: async () => {
