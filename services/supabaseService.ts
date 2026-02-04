@@ -3,30 +3,27 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
 let supabaseInstance: SupabaseClient | null = null;
 
+/**
+ * Universal environment variable accessor for Vite/Node.
+ */
 const getEnv = (key: string): string | undefined => {
-  const findInObject = (obj: any) => {
-    if (!obj) return undefined;
-    if (obj[key]) return obj[key];
-    if (!key.startsWith('VITE_')) {
-      const viteKey = `VITE_${key}`;
-      if (obj[viteKey]) return obj[viteKey];
-    }
-    if (!key.startsWith('NEXT_PUBLIC_')) {
-      const nextKey = `NEXT_PUBLIC_${key}`;
-      if (obj[nextKey]) return obj[nextKey];
-    }
-    return undefined;
-  };
+  const searchKeys = [`VITE_${key}`, key, `NEXT_PUBLIC_${key}`];
 
-  try {
-    // @ts-ignore
-    const viteEnvMatch = findInObject(import.meta.env);
-    if (viteEnvMatch) return viteEnvMatch;
-  } catch (e) {}
+  for (const k of searchKeys) {
+    try {
+      const meta = (import.meta as any);
+      if (typeof meta !== 'undefined' && meta.env && meta.env[k]) {
+        return meta.env[k];
+      }
+    } catch (e) {}
 
-  const processMatch = findInObject(process.env);
-  if (processMatch) return processMatch;
-
+    try {
+      // @ts-ignore
+      if (typeof process !== 'undefined' && process.env && process.env[k]) {
+        return process.env[k];
+      }
+    } catch (e) {}
+  }
   return undefined;
 };
 
@@ -37,7 +34,7 @@ const getSupabase = (): SupabaseClient | null => {
   const key = getEnv('SUPABASE_PUBLISHABLE_DEFAULT_KEY') || getEnv('NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY');
 
   if (!url || !key) {
-    console.error(`AgriSound Error: Supabase configuration missing. Please ensure your keys in the dashboard are prefixed with VITE_ (e.g. VITE_SUPABASE_URL)`);
+    console.error(`AgriSound Error: Supabase configuration missing. Ensure keys like VITE_SUPABASE_URL exist.`);
     return null;
   }
 
@@ -55,14 +52,22 @@ const BUCKET_NAME = 'sounds';
 export const supabaseService = {
   uploadSound: async (file: File | Blob, fileName: string): Promise<string> => {
     const client = getSupabase();
-    if (!client) throw new Error("Supabase is not configured. Please check your deployment secrets.");
+    if (!client) throw new Error("Supabase is not configured.");
 
     const path = `${Date.now()}-${fileName}`;
     const { data, error } = await client.storage
       .from(BUCKET_NAME)
       .upload(path, file);
 
-    if (error) throw error;
+    if (error) {
+      // Handle the 404 Bucket Not Found error specifically
+      if ((error as any).status === 404 || (error as any).message?.includes('not found')) {
+        const msg = `Bucket "${BUCKET_NAME}" not found. Please go to your Supabase dashboard -> Storage, create a bucket named "${BUCKET_NAME}", and set it to "Public".`;
+        alert(msg);
+        throw new Error(msg);
+      }
+      throw error;
+    }
 
     const { data: { publicUrl } } = client.storage
       .from(BUCKET_NAME)

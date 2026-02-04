@@ -3,59 +3,41 @@ import { initializeApp, getApp, getApps, FirebaseApp } from 'firebase/app';
 import { getDatabase, ref, onValue, set, off, Database } from 'firebase/database';
 
 /**
- * Enhanced environment variable lookup for Vite/Replit/Vercel environments.
+ * Universal environment variable accessor.
  */
 const getEnv = (key: string): string | undefined => {
-  const findInObject = (obj: any) => {
-    if (!obj) return undefined;
-    
-    // 1. Direct match
-    if (obj[key]) return obj[key];
-    
-    // 2. Try VITE_ prefix (Required by Vite for client-side access)
-    if (!key.startsWith('VITE_')) {
-      const viteKey = `VITE_${key}`;
-      if (obj[viteKey]) return obj[viteKey];
-    }
-    
-    // 3. Try NEXT_PUBLIC_ prefix
-    if (!key.startsWith('NEXT_PUBLIC_')) {
-      const nextKey = `NEXT_PUBLIC_${key}`;
-      if (obj[nextKey]) return obj[nextKey];
-    }
+  const searchKeys = [`VITE_${key}`, key, `NEXT_PUBLIC_${key}`];
 
-    return undefined;
-  };
+  for (const k of searchKeys) {
+    try {
+      const meta = (import.meta as any);
+      if (typeof meta !== 'undefined' && meta.env && meta.env[k]) {
+        return meta.env[k];
+      }
+    } catch (e) {}
 
-  // Try Vite's preferred object first
-  try {
-    // @ts-ignore
-    const viteEnvMatch = findInObject(import.meta.env);
-    if (viteEnvMatch) return viteEnvMatch;
-  } catch (e) {}
-
-  // Fallback to standard process.env
-  const processMatch = findInObject(process.env);
-  if (processMatch) return processMatch;
-
+    try {
+      // @ts-ignore
+      if (typeof process !== 'undefined' && process.env && process.env[k]) {
+        return process.env[k];
+      }
+    } catch (e) {}
+  }
   return undefined;
 };
 
-/**
- * Diagnostic tool to help debug why keys might be missing.
- */
 const debugEnv = () => {
-  const visibleKeys: string[] = [];
+  const keys: string[] = [];
   try {
-    // @ts-ignore
-    Object.keys(import.meta.env || {}).forEach(k => visibleKeys.push(k));
+    const meta = (import.meta as any);
+    if (meta.env) Object.keys(meta.env).forEach(k => keys.push(k));
   } catch(e) {}
-  if (process.env) Object.keys(process.env).forEach(k => visibleKeys.push(k));
   
-  if (visibleKeys.length > 0) {
-    console.log("AgriSound Debug: The following keys are visible to the browser:", visibleKeys.filter(k => k.includes('FIREBASE') || k.includes('SUPABASE')));
+  const filtered = keys.filter(k => k.includes('FIREBASE') || k.includes('SUPABASE'));
+  if (filtered.length === 0) {
+    console.warn("AgriSound Diagnostic: No VITE_ prefixed variables found. Check your deployment dashboard.");
   } else {
-    console.warn("AgriSound Warning: No environment variables are visible to the browser context.");
+    console.log("AgriSound Diagnostic: Found config keys:", filtered);
   }
 };
 
@@ -76,7 +58,7 @@ const initFirebase = (): FirebaseApp | null => {
   };
 
   if (!config.apiKey) {
-    console.error("AgriSound Error: FIREBASE_API_KEY is missing. Check if your dashboard keys start with VITE_");
+    console.error("AgriSound Error: FIREBASE_API_KEY is missing.");
     debugEnv();
     return null;
   }
@@ -92,21 +74,17 @@ const initFirebase = (): FirebaseApp | null => {
 
 const getDb = (): Database | null => {
   if (dbInstance) return dbInstance;
-  
   const app = initFirebase();
   if (!app) return null;
 
   const dbUrl = getEnv('FIREBASE_DATABASE_URL');
-  if (!dbUrl) {
-    console.error("AgriSound Error: FIREBASE_DATABASE_URL is missing.");
-    return null;
-  }
+  if (!dbUrl) return null;
 
   try {
     dbInstance = getDatabase(app, dbUrl);
     return dbInstance;
   } catch (err) {
-    console.error("AgriSound Error: Failed to initialize Realtime Database:", err);
+    console.error("AgriSound Error: Database initialization failed:", err);
     return null;
   }
 };
@@ -115,7 +93,6 @@ export const firebaseService = {
   subscribeToMainSwitch: (callback: (isOn: boolean) => void) => {
     const db = getDb();
     if (!db) return () => {};
-    
     try {
       const switchRef = ref(db, 'system/mainSwitch');
       onValue(switchRef, (snapshot) => {
@@ -129,10 +106,7 @@ export const firebaseService = {
 
   setMainSwitch: async (isOn: boolean) => {
     const db = getDb();
-    if (!db) {
-      alert("System Offline: Ensure variables in your dashboard are prefixed with VITE_");
-      return;
-    }
+    if (!db) return;
     try {
       await set(ref(db, 'system/mainSwitch'), isOn);
     } catch (e) {
