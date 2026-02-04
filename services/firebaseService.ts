@@ -15,28 +15,44 @@ const firebaseConfig = {
 // Initialize Firebase App
 const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 
-// Explicitly pass the databaseURL to getDatabase to avoid "Can't determine URL" error
-const dbUrl = process.env.FIREBASE_DATABASE_URL;
+// Guarded Database Initialization
+let dbInstance: Database | null = null;
 
-if (!dbUrl) {
-  console.error("FIREBASE_DATABASE_URL is missing from environment variables.");
-}
+const getDb = (): Database | null => {
+  if (dbInstance) return dbInstance;
+  
+  const dbUrl = process.env.FIREBASE_DATABASE_URL;
+  if (!dbUrl || dbUrl.includes('YOUR_FIREBASE')) {
+    console.error("AgriSound Error: FIREBASE_DATABASE_URL is missing or invalid in .env");
+    return null;
+  }
 
-const db: Database = getDatabase(app, dbUrl);
+  try {
+    dbInstance = getDatabase(app, dbUrl);
+    return dbInstance;
+  } catch (err) {
+    console.error("AgriSound Error: Failed to initialize Firebase Database:", err);
+    return null;
+  }
+};
 
 export const firebaseService = {
   /**
    * Listen for changes to the main system switch.
    */
   subscribeToMainSwitch: (callback: (isOn: boolean) => void) => {
-    if (!db) return () => {};
+    const db = getDb();
+    if (!db) {
+      console.warn("AgriSound Warning: Firebase Database not available. Using local state.");
+      return () => {};
+    }
     
     const switchRef = ref(db, 'system/mainSwitch');
     onValue(switchRef, (snapshot) => {
       const data = snapshot.val();
       callback(data === true);
     }, (error) => {
-      console.error("Firebase subscription error:", error);
+      console.error("AgriSound Firebase Sync Error:", error);
     });
     
     return () => off(switchRef);
@@ -46,7 +62,11 @@ export const firebaseService = {
    * Toggle the main system switch in the database.
    */
   setMainSwitch: async (isOn: boolean) => {
-    if (!db) throw new Error("Database not initialized");
+    const db = getDb();
+    if (!db) {
+      alert("Cannot connect to cloud controller. Please check your .env credentials.");
+      return;
+    }
     const switchRef = ref(db, 'system/mainSwitch');
     await set(switchRef, isOn);
   }
