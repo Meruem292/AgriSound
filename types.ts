@@ -15,7 +15,7 @@ export enum ScheduleType {
 export interface SoundFile {
   id: string;
   name: string;
-  blob: Blob;
+  url: string; // Changed from blob: Blob to url: string
   tag: 'predator' | 'distress' | 'mechanical' | 'other';
   duration: number; // in seconds
   fileName: string;

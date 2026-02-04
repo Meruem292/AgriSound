@@ -2,7 +2,7 @@
 import { DeviceState, DeviceStatus, Schedule, SoundFile, PlaybackLog, ScheduleType } from '../types';
 
 const DB_NAME = 'AgriSoundDB';
-const DB_VERSION = 3; // Bumped to 3 to force schema recreation
+const DB_VERSION = 4; // Bumped to 4 for Supabase URL migration
 const STORES = {
   SOUNDS: 'sounds',
   SCHEDULES: 'schedules',
@@ -19,9 +19,9 @@ class LocalDB {
       request.onupgradeneeded = (event: IDBVersionChangeEvent) => {
         const db = request.result;
         
-        // Recreate the state store if upgrading to ensure keyPath: 'id' exists
-        if (event.oldVersion < 3 && db.objectStoreNames.contains(STORES.STATE)) {
-          db.deleteObjectStore(STORES.STATE);
+        // Handle migration if needed
+        if (event.oldVersion < 4) {
+          // You could add logic here to clean up old blobs if space is tight
         }
 
         if (!db.objectStoreNames.contains(STORES.SOUNDS)) db.createObjectStore(STORES.SOUNDS, { keyPath: 'id' });
@@ -59,7 +59,6 @@ class LocalDB {
     return new Promise((resolve, reject) => {
       const transaction = this.db!.transaction(storeName, 'readwrite');
       const store = transaction.objectStore(storeName);
-      // Ensure item has an ID if it's the state store
       if (storeName === STORES.STATE && !item.id) item.id = 'main';
       const request = store.put(item);
       request.onerror = () => reject(request.error);
@@ -185,8 +184,8 @@ export const databaseService = {
         lastWakeTime: Date.now()
       });
 
-      const audioUrl = URL.createObjectURL(sound.blob);
-      const audio = new Audio(audioUrl);
+      const audio = new Audio(sound.url);
+      audio.crossOrigin = "anonymous"; // Needed if Supabase has CORS restricted
 
       await new Promise((resolve) => {
         audio.onplay = () => {
@@ -197,16 +196,13 @@ export const databaseService = {
             status: 'success'
           });
         };
-        audio.onended = () => {
-          URL.revokeObjectURL(audioUrl);
-          resolve(true);
-        };
-        audio.onerror = () => {
-          URL.revokeObjectURL(audioUrl);
+        audio.onended = () => resolve(true);
+        audio.onerror = (e) => {
+          console.error("Audio playback error:", e);
           resolve(false);
         };
         audio.play().catch(err => {
-          console.error("Playback blocked. Use the ARM button.", err);
+          console.error("Playback blocked. Use the UNLOCK button.", err);
           resolve(false);
         });
       });
