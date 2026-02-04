@@ -7,20 +7,25 @@ const getEnv = (key: string): string | undefined => {
   const findInObject = (obj: any) => {
     if (!obj) return undefined;
     if (obj[key]) return obj[key];
-    if (!key.startsWith('VITE_') && obj[`VITE_${key}`]) return obj[`VITE_${key}`];
-    if (!key.startsWith('NEXT_PUBLIC_') && obj[`NEXT_PUBLIC_${key}`]) return obj[`NEXT_PUBLIC_${key}`];
+    if (!key.startsWith('VITE_')) {
+      const viteKey = `VITE_${key}`;
+      if (obj[viteKey]) return obj[viteKey];
+    }
+    if (!key.startsWith('NEXT_PUBLIC_')) {
+      const nextKey = `NEXT_PUBLIC_${key}`;
+      if (obj[nextKey]) return obj[nextKey];
+    }
     return undefined;
   };
 
-  const fromProcess = findInObject(process.env);
-  if (fromProcess) return fromProcess;
-
   try {
     // @ts-ignore
-    const viteEnv = import.meta.env;
-    const fromVite = findInObject(viteEnv);
-    if (fromVite) return fromVite;
+    const viteEnvMatch = findInObject(import.meta.env);
+    if (viteEnvMatch) return viteEnvMatch;
   } catch (e) {}
+
+  const processMatch = findInObject(process.env);
+  if (processMatch) return processMatch;
 
   return undefined;
 };
@@ -28,11 +33,11 @@ const getEnv = (key: string): string | undefined => {
 const getSupabase = (): SupabaseClient | null => {
   if (supabaseInstance) return supabaseInstance;
 
-  const url = getEnv('NEXT_PUBLIC_SUPABASE_URL');
-  const key = getEnv('NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY');
+  const url = getEnv('SUPABASE_URL') || getEnv('NEXT_PUBLIC_SUPABASE_URL');
+  const key = getEnv('SUPABASE_PUBLISHABLE_DEFAULT_KEY') || getEnv('NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY');
 
   if (!url || !key) {
-    console.error(`AgriSound Error: Supabase configuration missing. URL Found: ${!!url}, Key Found: ${!!key}`);
+    console.error(`AgriSound Error: Supabase configuration missing. Please ensure your keys in the dashboard are prefixed with VITE_ (e.g. VITE_SUPABASE_URL)`);
     return null;
   }
 
@@ -50,9 +55,7 @@ const BUCKET_NAME = 'sounds';
 export const supabaseService = {
   uploadSound: async (file: File | Blob, fileName: string): Promise<string> => {
     const client = getSupabase();
-    if (!client) {
-      throw new Error("Supabase is not configured. Please check your deployment secrets.");
-    }
+    if (!client) throw new Error("Supabase is not configured. Please check your deployment secrets.");
 
     const path = `${Date.now()}-${fileName}`;
     const { data, error } = await client.storage
@@ -75,7 +78,6 @@ export const supabaseService = {
     try {
       const urlParts = url.split('/');
       const path = urlParts[urlParts.length - 1];
-      
       if (path) {
         await client.storage.from(BUCKET_NAME).remove([path]);
       }

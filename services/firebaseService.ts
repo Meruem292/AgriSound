@@ -3,45 +3,60 @@ import { initializeApp, getApp, getApps, FirebaseApp } from 'firebase/app';
 import { getDatabase, ref, onValue, set, off, Database } from 'firebase/database';
 
 /**
- * Highly robust environment variable getter for Vite, Webpack, and Meta-frameworks.
+ * Enhanced environment variable lookup for Vite/Replit/Vercel environments.
  */
 const getEnv = (key: string): string | undefined => {
   const findInObject = (obj: any) => {
     if (!obj) return undefined;
+    
+    // 1. Direct match
     if (obj[key]) return obj[key];
-    if (!key.startsWith('VITE_') && obj[`VITE_${key}`]) return obj[`VITE_${key}`];
-    if (!key.startsWith('NEXT_PUBLIC_') && obj[`NEXT_PUBLIC_${key}`]) return obj[`NEXT_PUBLIC_${key}`];
+    
+    // 2. Try VITE_ prefix (Required by Vite for client-side access)
+    if (!key.startsWith('VITE_')) {
+      const viteKey = `VITE_${key}`;
+      if (obj[viteKey]) return obj[viteKey];
+    }
+    
+    // 3. Try NEXT_PUBLIC_ prefix
+    if (!key.startsWith('NEXT_PUBLIC_')) {
+      const nextKey = `NEXT_PUBLIC_${key}`;
+      if (obj[nextKey]) return obj[nextKey];
+    }
+
     return undefined;
   };
 
-  // 1. Try process.env (Standard Node/Webpack/CRA)
-  const fromProcess = findInObject(process.env);
-  if (fromProcess) return fromProcess;
-
-  // 2. Try import.meta.env (Vite standard)
+  // Try Vite's preferred object first
   try {
     // @ts-ignore
-    const viteEnv = import.meta.env;
-    const fromVite = findInObject(viteEnv);
-    if (fromVite) return fromVite;
-  } catch (e) {
-    // Ignore errors if import.meta.env is not supported
-  }
+    const viteEnvMatch = findInObject(import.meta.env);
+    if (viteEnvMatch) return viteEnvMatch;
+  } catch (e) {}
+
+  // Fallback to standard process.env
+  const processMatch = findInObject(process.env);
+  if (processMatch) return processMatch;
 
   return undefined;
 };
 
 /**
- * Diagnostic helper to print available keys (not values) for debugging environment injection.
+ * Diagnostic tool to help debug why keys might be missing.
  */
-const debugEnvKeys = () => {
-  const keys = new Set<string>();
-  if (process.env) Object.keys(process.env).forEach(k => keys.add(k));
+const debugEnv = () => {
+  const visibleKeys: string[] = [];
   try {
     // @ts-ignore
-    if (import.meta.env) Object.keys(import.meta.env).forEach(k => keys.add(k));
+    Object.keys(import.meta.env || {}).forEach(k => visibleKeys.push(k));
   } catch(e) {}
-  console.log("AgriSound Debug - Available Env Keys:", Array.from(keys));
+  if (process.env) Object.keys(process.env).forEach(k => visibleKeys.push(k));
+  
+  if (visibleKeys.length > 0) {
+    console.log("AgriSound Debug: The following keys are visible to the browser:", visibleKeys.filter(k => k.includes('FIREBASE') || k.includes('SUPABASE')));
+  } else {
+    console.warn("AgriSound Warning: No environment variables are visible to the browser context.");
+  }
 };
 
 let appInstance: FirebaseApp | null = null;
@@ -61,8 +76,8 @@ const initFirebase = (): FirebaseApp | null => {
   };
 
   if (!config.apiKey) {
-    console.error("AgriSound Error: FIREBASE_API_KEY is missing.");
-    debugEnvKeys();
+    console.error("AgriSound Error: FIREBASE_API_KEY is missing. Check if your dashboard keys start with VITE_");
+    debugEnv();
     return null;
   }
 
@@ -70,7 +85,7 @@ const initFirebase = (): FirebaseApp | null => {
     appInstance = !getApps().length ? initializeApp(config) : getApp();
     return appInstance;
   } catch (err) {
-    console.error("AgriSound Error: Failed to initialize Firebase App:", err);
+    console.error("AgriSound Error: Firebase initialization failed:", err);
     return null;
   }
 };
@@ -82,10 +97,8 @@ const getDb = (): Database | null => {
   if (!app) return null;
 
   const dbUrl = getEnv('FIREBASE_DATABASE_URL');
-  
   if (!dbUrl) {
     console.error("AgriSound Error: FIREBASE_DATABASE_URL is missing.");
-    debugEnvKeys();
     return null;
   }
 
@@ -93,7 +106,7 @@ const getDb = (): Database | null => {
     dbInstance = getDatabase(app, dbUrl);
     return dbInstance;
   } catch (err) {
-    console.error("AgriSound Error: Failed to initialize Firebase Database service:", err);
+    console.error("AgriSound Error: Failed to initialize Realtime Database:", err);
     return null;
   }
 };
@@ -101,23 +114,15 @@ const getDb = (): Database | null => {
 export const firebaseService = {
   subscribeToMainSwitch: (callback: (isOn: boolean) => void) => {
     const db = getDb();
-    if (!db) {
-      console.warn("AgriSound Warning: Cloud controller unavailable. Remote sync disabled.");
-      return () => {};
-    }
+    if (!db) return () => {};
     
     try {
       const switchRef = ref(db, 'system/mainSwitch');
       onValue(switchRef, (snapshot) => {
-        const data = snapshot.val();
-        callback(data === true);
-      }, (error) => {
-        console.error("AgriSound Firebase Sync Error:", error);
+        callback(snapshot.val() === true);
       });
-      
       return () => off(switchRef);
     } catch (e) {
-      console.error("AgriSound Error: Could not create reference to database", e);
       return () => {};
     }
   },
@@ -125,15 +130,13 @@ export const firebaseService = {
   setMainSwitch: async (isOn: boolean) => {
     const db = getDb();
     if (!db) {
-      alert("System Offline: Check your deployment dashboard for Firebase variables.");
+      alert("System Offline: Ensure variables in your dashboard are prefixed with VITE_");
       return;
     }
     try {
-      const switchRef = ref(db, 'system/mainSwitch');
-      await set(switchRef, isOn);
+      await set(ref(db, 'system/mainSwitch'), isOn);
     } catch (e) {
-      console.error("AgriSound Error: Failed to update cloud switch", e);
-      alert("Connection Error: Failed to update cloud state.");
+      console.error("AgriSound Error: Failed to update cloud state", e);
     }
   }
 };
