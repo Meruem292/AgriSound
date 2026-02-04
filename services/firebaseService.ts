@@ -1,40 +1,95 @@
 
-import { initializeApp, getApp, getApps } from 'firebase/app';
+import { initializeApp, getApp, getApps, FirebaseApp } from 'firebase/app';
 import { getDatabase, ref, onValue, set, off, Database } from 'firebase/database';
 
-const firebaseConfig = {
-  apiKey: process.env.FIREBASE_API_KEY,
-  authDomain: process.env.FIREBASE_AUTH_DOMAIN,
-  databaseURL: process.env.FIREBASE_DATABASE_URL,
-  projectId: process.env.FIREBASE_PROJECT_ID,
-  storageBucket: process.env.FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: process.env.FIREBASE_MESSAGING_SENDER_ID,
-  appId: process.env.FIREBASE_APP_ID
+/**
+ * Highly robust environment variable getter for Vite, Webpack, and Meta-frameworks.
+ */
+const getEnv = (key: string): string | undefined => {
+  const findInObject = (obj: any) => {
+    if (!obj) return undefined;
+    if (obj[key]) return obj[key];
+    if (!key.startsWith('VITE_') && obj[`VITE_${key}`]) return obj[`VITE_${key}`];
+    if (!key.startsWith('NEXT_PUBLIC_') && obj[`NEXT_PUBLIC_${key}`]) return obj[`NEXT_PUBLIC_${key}`];
+    return undefined;
+  };
+
+  // 1. Try process.env (Standard Node/Webpack/CRA)
+  const fromProcess = findInObject(process.env);
+  if (fromProcess) return fromProcess;
+
+  // 2. Try import.meta.env (Vite standard)
+  try {
+    // @ts-ignore
+    const viteEnv = import.meta.env;
+    const fromVite = findInObject(viteEnv);
+    if (fromVite) return fromVite;
+  } catch (e) {
+    // Ignore errors if import.meta.env is not supported
+  }
+
+  return undefined;
 };
 
-// Initialize Firebase App
-const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
+/**
+ * Diagnostic helper to print available keys (not values) for debugging environment injection.
+ */
+const debugEnvKeys = () => {
+  const keys = new Set<string>();
+  if (process.env) Object.keys(process.env).forEach(k => keys.add(k));
+  try {
+    // @ts-ignore
+    if (import.meta.env) Object.keys(import.meta.env).forEach(k => keys.add(k));
+  } catch(e) {}
+  console.log("AgriSound Debug - Available Env Keys:", Array.from(keys));
+};
 
-// Guarded Database Initialization
+let appInstance: FirebaseApp | null = null;
 let dbInstance: Database | null = null;
 
-const getDb = (): Database | null => {
-  if (dbInstance) return dbInstance;
-  
-  const dbUrl = process.env.FIREBASE_DATABASE_URL;
-  
-  // Check if missing, empty, or still contains placeholder strings
-  const isInvalid = !dbUrl || 
-                    dbUrl.toUpperCase().includes('YOUR_FIREBASE') || 
-                    dbUrl.includes('your-app-default-rtdb');
+const initFirebase = (): FirebaseApp | null => {
+  if (appInstance) return appInstance;
 
-  if (isInvalid) {
-    console.error(`AgriSound Error: FIREBASE_DATABASE_URL is ${!dbUrl ? 'MISSING' : 'INVALID (placeholder detected)'} in .env. Value found: "${dbUrl}"`);
+  const config = {
+    apiKey: getEnv('FIREBASE_API_KEY'),
+    authDomain: getEnv('FIREBASE_AUTH_DOMAIN'),
+    databaseURL: getEnv('FIREBASE_DATABASE_URL'),
+    projectId: getEnv('FIREBASE_PROJECT_ID'),
+    storageBucket: getEnv('FIREBASE_STORAGE_BUCKET'),
+    messagingSenderId: getEnv('FIREBASE_MESSAGING_SENDER_ID'),
+    appId: getEnv('FIREBASE_APP_ID')
+  };
+
+  if (!config.apiKey) {
+    console.error("AgriSound Error: FIREBASE_API_KEY is missing.");
+    debugEnvKeys();
     return null;
   }
 
   try {
-    // Explicitly passing the URL to getDatabase ensures it doesn't try to guess from config if config is broken
+    appInstance = !getApps().length ? initializeApp(config) : getApp();
+    return appInstance;
+  } catch (err) {
+    console.error("AgriSound Error: Failed to initialize Firebase App:", err);
+    return null;
+  }
+};
+
+const getDb = (): Database | null => {
+  if (dbInstance) return dbInstance;
+  
+  const app = initFirebase();
+  if (!app) return null;
+
+  const dbUrl = getEnv('FIREBASE_DATABASE_URL');
+  
+  if (!dbUrl) {
+    console.error("AgriSound Error: FIREBASE_DATABASE_URL is missing.");
+    debugEnvKeys();
+    return null;
+  }
+
+  try {
     dbInstance = getDatabase(app, dbUrl);
     return dbInstance;
   } catch (err) {
@@ -44,13 +99,10 @@ const getDb = (): Database | null => {
 };
 
 export const firebaseService = {
-  /**
-   * Listen for changes to the main system switch.
-   */
   subscribeToMainSwitch: (callback: (isOn: boolean) => void) => {
     const db = getDb();
     if (!db) {
-      console.warn("AgriSound Warning: Cloud controller unavailable. Background sync is disabled.");
+      console.warn("AgriSound Warning: Cloud controller unavailable. Remote sync disabled.");
       return () => {};
     }
     
@@ -70,13 +122,10 @@ export const firebaseService = {
     }
   },
 
-  /**
-   * Toggle the main system switch in the database.
-   */
   setMainSwitch: async (isOn: boolean) => {
     const db = getDb();
     if (!db) {
-      alert("System Offline: Please update your .env with valid Firebase credentials to use remote control.");
+      alert("System Offline: Check your deployment dashboard for Firebase variables.");
       return;
     }
     try {
