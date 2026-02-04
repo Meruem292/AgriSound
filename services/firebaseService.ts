@@ -22,16 +22,23 @@ const getDb = (): Database | null => {
   if (dbInstance) return dbInstance;
   
   const dbUrl = process.env.FIREBASE_DATABASE_URL;
-  if (!dbUrl || dbUrl.includes('YOUR_FIREBASE')) {
-    console.error("AgriSound Error: FIREBASE_DATABASE_URL is missing or invalid in .env");
+  
+  // Check if missing, empty, or still contains placeholder strings
+  const isInvalid = !dbUrl || 
+                    dbUrl.toUpperCase().includes('YOUR_FIREBASE') || 
+                    dbUrl.includes('your-app-default-rtdb');
+
+  if (isInvalid) {
+    console.error(`AgriSound Error: FIREBASE_DATABASE_URL is ${!dbUrl ? 'MISSING' : 'INVALID (placeholder detected)'} in .env. Value found: "${dbUrl}"`);
     return null;
   }
 
   try {
+    // Explicitly passing the URL to getDatabase ensures it doesn't try to guess from config if config is broken
     dbInstance = getDatabase(app, dbUrl);
     return dbInstance;
   } catch (err) {
-    console.error("AgriSound Error: Failed to initialize Firebase Database:", err);
+    console.error("AgriSound Error: Failed to initialize Firebase Database service:", err);
     return null;
   }
 };
@@ -43,19 +50,24 @@ export const firebaseService = {
   subscribeToMainSwitch: (callback: (isOn: boolean) => void) => {
     const db = getDb();
     if (!db) {
-      console.warn("AgriSound Warning: Firebase Database not available. Using local state.");
+      console.warn("AgriSound Warning: Cloud controller unavailable. Background sync is disabled.");
       return () => {};
     }
     
-    const switchRef = ref(db, 'system/mainSwitch');
-    onValue(switchRef, (snapshot) => {
-      const data = snapshot.val();
-      callback(data === true);
-    }, (error) => {
-      console.error("AgriSound Firebase Sync Error:", error);
-    });
-    
-    return () => off(switchRef);
+    try {
+      const switchRef = ref(db, 'system/mainSwitch');
+      onValue(switchRef, (snapshot) => {
+        const data = snapshot.val();
+        callback(data === true);
+      }, (error) => {
+        console.error("AgriSound Firebase Sync Error:", error);
+      });
+      
+      return () => off(switchRef);
+    } catch (e) {
+      console.error("AgriSound Error: Could not create reference to database", e);
+      return () => {};
+    }
   },
 
   /**
@@ -64,10 +76,15 @@ export const firebaseService = {
   setMainSwitch: async (isOn: boolean) => {
     const db = getDb();
     if (!db) {
-      alert("Cannot connect to cloud controller. Please check your .env credentials.");
+      alert("System Offline: Please update your .env with valid Firebase credentials to use remote control.");
       return;
     }
-    const switchRef = ref(db, 'system/mainSwitch');
-    await set(switchRef, isOn);
+    try {
+      const switchRef = ref(db, 'system/mainSwitch');
+      await set(switchRef, isOn);
+    } catch (e) {
+      console.error("AgriSound Error: Failed to update cloud switch", e);
+      alert("Connection Error: Failed to update cloud state.");
+    }
   }
 };
