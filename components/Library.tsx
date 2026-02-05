@@ -11,25 +11,15 @@ const Library: React.FC = () => {
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
-    loadSounds();
-  }, []);
-
-  const loadSounds = async () => {
-    const data = await databaseService.getSounds();
-    setSounds(data);
-  };
+  useEffect(() => { loadSounds(); }, []);
+  const loadSounds = async () => { setSounds(await databaseService.getSounds()); };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-
     setIsUploading(true);
     try {
-      // 1. Upload to Supabase Storage
       const publicUrl = await supabaseService.uploadSound(file, file.name);
-
-      // 2. Save metadata to local DB
       const sound: SoundFile = {
         id: Math.random().toString(36).substr(2, 9),
         name: file.name.split('.')[0],
@@ -38,12 +28,10 @@ const Library: React.FC = () => {
         tag: 'other',
         duration: 0
       };
-
       await databaseService.addSound(sound);
       await loadSounds();
     } catch (error) {
       console.error("Upload failed:", error);
-      alert("Failed to upload sound to cloud storage.");
     } finally {
       setIsUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
@@ -51,8 +39,7 @@ const Library: React.FC = () => {
   };
 
   const handleDelete = async (sound: SoundFile) => {
-    if (confirm("Remove this sound from the system?")) {
-      // Optional: Delete from Supabase too
+    if (confirm("Permanently delete this cloud asset?")) {
       await supabaseService.deleteSound(sound.url);
       await databaseService.deleteSound(sound.id);
       await loadSounds();
@@ -62,125 +49,113 @@ const Library: React.FC = () => {
   const previewSound = (url: string) => {
     const audio = new Audio(url);
     audio.crossOrigin = "anonymous";
-    audio.play().catch(e => console.error("Preview blocked:", e));
+    audio.play().catch(e => console.error("Playback blocked:", e));
   };
 
-  const filteredSounds = sounds.filter(s => 
-    s.name.toLowerCase().includes(search.toLowerCase())
-  );
+  const filteredSounds = sounds.filter(s => s.name.toLowerCase().includes(search.toLowerCase()));
 
   return (
-    <div className="p-6 space-y-6">
-      {/* Header & Main Actions */}
-      <div className="flex justify-between items-center">
+    <div className="space-y-8 py-6">
+      <div className="flex justify-between items-end">
         <div>
-          <h2 className="text-2xl font-black text-slate-900">Cloud Library</h2>
-          <p className="text-sm text-slate-500 font-medium">Supabase Storage Sync</p>
+          <h1 className="text-3xl font-black text-slate-900 tracking-tight">Audio Vault</h1>
+          <p className="text-slate-500 font-medium">Synced Cloud Library</p>
         </div>
-        <div className="flex gap-2">
-          <input 
-            type="file" 
-            ref={fileInputRef} 
-            className="hidden" 
-            accept="audio/*" 
-            onChange={handleFileUpload}
-            disabled={isUploading}
-          />
+        <div className="flex gap-3">
+          <input type="file" ref={fileInputRef} className="hidden" accept="audio/*" onChange={handleFileUpload} disabled={isUploading} />
           <button 
             onClick={() => fileInputRef.current?.click()}
             disabled={isUploading}
-            className="bg-green-600 text-white p-4 rounded-2xl shadow-lg active:scale-95 transition-transform disabled:opacity-50 disabled:cursor-not-allowed"
+            className="bg-slate-900 text-white flex items-center gap-3 px-6 py-4 rounded-[24px] shadow-xl active:scale-95 transition-all disabled:opacity-50"
           >
-            {isUploading ? <Loader2 size={28} className="animate-spin" /> : <Plus size={28} strokeWidth={3} />}
+            {isUploading ? <Loader2 size={20} className="animate-spin" /> : <Plus size={20} strokeWidth={3} />}
+            <span className="text-sm font-black uppercase tracking-widest hidden md:inline">Import Sound</span>
           </button>
         </div>
       </div>
 
-      {/* Discovery Link Section */}
-      <div className="bg-slate-900 rounded-3xl p-5 text-white shadow-xl">
-        <div className="flex items-center gap-2 mb-3">
-          <Download size={20} className="text-green-400" />
-          <h3 className="font-bold text-lg">Discover New Sounds</h3>
-        </div>
-        <p className="text-xs text-slate-400 mb-4 leading-relaxed">
-          Centralize your bird repelling audio. Files uploaded here are available to all units linked to this Supabase project.
-        </p>
-        <a 
-          href="https://pixabay.com/sound-effects/search/bird/" 
-          target="_blank" 
-          rel="noopener noreferrer"
-          className="flex items-center justify-center gap-2 w-full bg-white/10 hover:bg-white/20 border border-white/10 py-3 rounded-xl transition-colors font-bold text-sm"
-        >
-          Open Pixabay Library <ExternalLink size={16} />
-        </a>
-      </div>
-
-      {/* Instructions Guide */}
-      <div className="bg-blue-50 border border-blue-100 rounded-2xl p-4">
-        <div className="flex items-center gap-2 mb-3 text-blue-800">
-          <Info size={18} />
-          <h4 className="font-black text-xs uppercase tracking-wider">How to sync sounds:</h4>
-        </div>
-        <div className="space-y-3">
-          <div className="flex gap-3">
-            <div className="w-5 h-5 bg-blue-600 text-white rounded-full flex items-center justify-center text-[10px] font-black shrink-0">1</div>
-            <p className="text-xs text-blue-900 font-medium">Download an audio file to your device.</p>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Discovery Tool */}
+        <div className="bg-slate-900 rounded-[40px] p-8 text-white shadow-2xl relative overflow-hidden group">
+          <div className="absolute top-0 right-0 p-8 opacity-10 transition-transform group-hover:scale-125">
+            <Music size={120} />
           </div>
-          <div className="flex gap-3">
-            <div className="w-5 h-5 bg-blue-600 text-white rounded-full flex items-center justify-center text-[10px] font-black shrink-0">2</div>
-            <p className="text-xs text-blue-900 font-medium">Click <strong>+</strong> to upload to Supabase Cloud Storage.</p>
-          </div>
-          <div className="flex gap-3">
-            <div className="w-5 h-5 bg-blue-600 text-white rounded-full flex items-center justify-center text-[10px] font-black shrink-0">3</div>
-            <p className="text-xs text-blue-900 font-medium">The repeller will stream the audio from the cloud when triggered.</p>
+          <div className="relative z-10">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="p-3 bg-green-500/20 text-green-400 rounded-2xl">
+                <Download size={24} />
+              </div>
+              <h3 className="font-black text-xl uppercase tracking-tighter">Expand Your Arsenal</h3>
+            </div>
+            <p className="text-slate-400 text-sm mb-8 leading-relaxed max-w-sm">
+              Sourcing high-quality predator calls is key to preventing habituation. Sync new files from global repositories directly to your unit.
+            </p>
+            <a 
+              href="https://pixabay.com/sound-effects/search/bird/" 
+              target="_blank" 
+              className="inline-flex items-center gap-3 bg-white text-slate-900 px-8 py-4 rounded-2xl font-black text-sm uppercase tracking-widest hover:bg-green-400 transition-colors shadow-lg"
+            >
+              Access Repelling Assets <ExternalLink size={18} />
+            </a>
           </div>
         </div>
+
+        {/* Dynamic Search & Requirement Box */}
+        <div className="flex flex-col gap-4">
+          <div className="relative">
+            <Search className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
+            <input 
+              type="text" 
+              placeholder="Filter synced library..." 
+              className="w-full bg-white border border-slate-100 rounded-[24px] py-5 pl-16 pr-6 text-sm font-black focus:outline-none focus:ring-4 focus:ring-green-500/10 shadow-sm transition-all"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </div>
+          <div className="bg-blue-50/50 border border-blue-100 rounded-[28px] p-6 flex gap-5 items-center">
+            <div className="p-3 bg-blue-100 text-blue-600 rounded-2xl shrink-0">
+              <Info size={24} />
+            </div>
+            <p className="text-[11px] text-blue-900 font-bold uppercase tracking-wider leading-relaxed">
+              Cloud assets require an active field uplink to stream during scheduled trigger windows.
+            </p>
+          </div>
+        </div>
       </div>
 
-      <div className="relative">
-        <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-        <input 
-          type="text" 
-          placeholder="Search synced sounds..." 
-          className="w-full bg-white border border-slate-200 rounded-2xl py-3 pl-12 pr-4 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-green-500/20"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
-      </div>
-
-      <div className="grid grid-cols-1 gap-4">
+      {/* Responsive Grid Gallery */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {sounds.length === 0 ? (
-          <div className="bg-slate-100 rounded-3xl p-10 border-2 border-dashed border-slate-200 text-center">
-            <Cloud size={48} className="mx-auto text-slate-300 mb-4" />
-            <p className="text-slate-500 font-bold">Cloud library empty</p>
-            <p className="text-slate-400 text-xs mt-1">Upload files to sync with the field units</p>
+          <div className="col-span-full bg-white rounded-[40px] p-20 border-2 border-dashed border-slate-100 text-center">
+            <Cloud size={64} className="mx-auto text-slate-100 mb-6" />
+            <h3 className="text-xl font-black text-slate-300 uppercase tracking-widest">Library Offline</h3>
+            <p className="text-slate-400 text-sm mt-2">Upload audio assets to initialize the field array.</p>
           </div>
         ) : (
           filteredSounds.map(sound => (
-            <div key={sound.id} className="bg-white rounded-3xl p-4 shadow-sm border border-slate-100 flex items-center gap-4">
+            <div key={sound.id} className="group bg-white rounded-[32px] p-5 shadow-sm border border-slate-100 flex items-center gap-5 hover:shadow-xl hover:shadow-slate-100 transition-all">
               <div 
                 onClick={() => previewSound(sound.url)}
-                className="w-14 h-14 bg-green-50 rounded-2xl flex items-center justify-center text-green-600 cursor-pointer transition-transform active:scale-90"
+                className="w-16 h-16 bg-green-50 text-green-600 rounded-2xl flex items-center justify-center cursor-pointer transition-all hover:bg-green-600 hover:text-white group-active:scale-90 shadow-inner"
               >
-                <Play size={24} />
+                <Play size={28} fill="currentColor" />
               </div>
               <div className="flex-1 min-w-0">
-                <h3 className="font-bold text-slate-900 truncate">{sound.name}</h3>
-                <span className="text-[10px] text-slate-400 font-bold block uppercase mt-0.5">Cloud Storage • SUPABASE</span>
+                <h3 className="font-black text-slate-900 truncate text-sm uppercase tracking-tight">{sound.name}</h3>
+                <div className="flex items-center gap-1.5 mt-1">
+                  <div className="w-1.5 h-1.5 rounded-full bg-blue-400" />
+                  <span className="text-[9px] text-slate-400 font-black uppercase tracking-widest">Supabase Sync</span>
+                </div>
               </div>
-              <button onClick={() => handleDelete(sound)} className="text-slate-300 hover:text-red-500 p-2">
-                <Trash2 size={18} />
+              <button 
+                onClick={() => handleDelete(sound)} 
+                className="opacity-0 group-hover:opacity-100 p-3 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all"
+              >
+                <Trash2 size={20} />
               </button>
             </div>
           ))
         )}
-      </div>
-
-      <div className="p-4 bg-amber-50 rounded-2xl border border-amber-100 flex gap-3">
-        <AlertCircle className="text-amber-600 shrink-0 mt-0.5" size={18} />
-        <p className="text-[11px] text-amber-800 font-medium leading-tight">
-          <strong>Network Requirement:</strong> The device must have internet access to stream audio from Supabase during a playback event.
-        </p>
       </div>
     </div>
   );

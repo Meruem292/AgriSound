@@ -7,7 +7,7 @@ import Library from './components/Library';
 import Logs from './components/Logs';
 import { databaseService } from './services/databaseService';
 import { firebaseService } from './services/firebaseService';
-import { DeviceStatus } from './types';
+import { DeviceStatus, Schedule } from './types';
 import { ShieldAlert, Zap } from 'lucide-react';
 
 const App: React.FC = () => {
@@ -27,10 +27,23 @@ const App: React.FC = () => {
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
 
-    // --- FIREBASE SYNC ---
-    const unsubscribeFirebase = firebaseService.subscribeToMainSwitch((isOn) => {
+    // --- FIREBASE SYNC: MASTER SWITCH ---
+    const unsubscribeFirebaseSwitch = firebaseService.subscribeToMainSwitch((isOn) => {
       console.log(`[Firebase] Remote Switch updated: ${isOn ? 'ON' : 'OFF'}`);
       setIsMasterSwitchOn(isOn);
+    });
+
+    // --- FIREBASE SYNC: SCHEDULES ---
+    const unsubscribeFirebaseSchedules = firebaseService.subscribeToSchedules(async (remoteSchedules) => {
+      console.log(`[Firebase] Syncing ${remoteSchedules.length} schedules to local storage...`);
+      await databaseService.ensureInit();
+      
+      // Update local store with remote data
+      // For a robust implementation, we might clear local and replace, 
+      // but for this app, we'll just save each one.
+      for (const sched of remoteSchedules) {
+        await databaseService.saveSchedule(sched);
+      }
     });
 
     // --- AUTOMATED SCHEDULING WORKER ---
@@ -83,6 +96,9 @@ const App: React.FC = () => {
             console.log(`[AgriSound Worker] Match: ${schedule.name}`);
             const updatedSchedule = { ...schedule, lastRunTimestamp: Date.now() };
             await databaseService.saveSchedule(updatedSchedule);
+            // Also update remote so other devices see the last run
+            await firebaseService.saveScheduleRemote(updatedSchedule);
+            
             databaseService.performPlayback('scheduled', schedule.id);
           }
         }
@@ -96,7 +112,8 @@ const App: React.FC = () => {
     return () => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
-      unsubscribeFirebase();
+      unsubscribeFirebaseSwitch();
+      unsubscribeFirebaseSchedules();
       clearInterval(workerInterval);
     };
   }, [isLocallyUnlocked, isMasterSwitchOn]);
