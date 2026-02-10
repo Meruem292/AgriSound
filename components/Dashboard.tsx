@@ -1,9 +1,9 @@
 
 import React, { useState, useEffect } from 'react';
-import { Activity, Clock, ShieldAlert, ShieldCheck, Cloud, RefreshCw } from 'lucide-react';
+import { Activity, Clock, ShieldAlert, ShieldCheck, Cloud, RefreshCw, Play, Music, Database } from 'lucide-react';
 import { databaseService } from '../services/databaseService';
 import { firebaseService } from '../services/firebaseService';
-import { DeviceState, DeviceStatus } from '../types';
+import { DeviceState, DeviceStatus, SoundFile } from '../types';
 
 interface DashboardProps {
   isArmed: boolean;
@@ -12,12 +12,18 @@ interface DashboardProps {
 
 const Dashboard: React.FC<DashboardProps> = ({ isArmed, isUnlocked }) => {
   const [device, setDevice] = useState<DeviceState | null>(null);
+  const [sounds, setSounds] = useState<SoundFile[]>([]);
   const [isUpdatingCloud, setIsUpdatingCloud] = useState(false);
+  const [activePlaybackId, setActivePlaybackId] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchData = async () => {
-      const state = await databaseService.getDeviceState();
+      const [state, soundList] = await Promise.all([
+        databaseService.getDeviceState(),
+        databaseService.getSounds()
+      ]);
       setDevice(state);
+      setSounds(soundList);
     };
     fetchData();
     const interval = setInterval(fetchData, 2000);
@@ -30,6 +36,36 @@ const Dashboard: React.FC<DashboardProps> = ({ isArmed, isUnlocked }) => {
       await firebaseService.setMainSwitch(!isArmed);
     } finally {
       setIsUpdatingCloud(false);
+    }
+  };
+
+  const quickTrigger = async (sound: SoundFile) => {
+    if (!isUnlocked) {
+      alert("Please unlock the speaker first.");
+      return;
+    }
+    setActivePlaybackId(sound.id);
+    
+    const audio = new Audio(sound.url);
+    audio.crossOrigin = "anonymous";
+    
+    audio.onplay = () => {
+      databaseService.addLog({
+        timestamp: Date.now(),
+        soundName: sound.name,
+        triggerType: 'manual',
+        status: 'success'
+      });
+    };
+
+    audio.onended = () => setActivePlaybackId(null);
+    audio.onerror = () => setActivePlaybackId(null);
+
+    try {
+      await audio.play();
+    } catch (e) {
+      console.error("Quick trigger failed", e);
+      setActivePlaybackId(null);
     }
   };
 
@@ -61,10 +97,16 @@ const Dashboard: React.FC<DashboardProps> = ({ isArmed, isUnlocked }) => {
           <h1 className="text-3xl font-black text-slate-900 tracking-tight">Dashboard</h1>
           <p className="text-slate-500 font-medium">Real-time Field Operations</p>
         </div>
-        <div className="flex items-center gap-3 px-5 py-2.5 bg-white rounded-2xl shadow-sm border border-slate-100">
-          <Cloud size={16} className={isArmed ? 'text-blue-500' : 'text-slate-300'} />
-          <span className="text-[11px] font-black uppercase tracking-widest text-slate-500">Live Cloud Sync</span>
-          <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+        <div className="flex items-center gap-6">
+          <div className="flex items-center gap-3 px-5 py-2.5 bg-white rounded-2xl shadow-sm border border-slate-100">
+            <Database size={16} className="text-green-600" />
+            <span className="text-[11px] font-black uppercase tracking-widest text-slate-500">{sounds.length} Synced Assets</span>
+          </div>
+          <div className="flex items-center gap-3 px-5 py-2.5 bg-white rounded-2xl shadow-sm border border-slate-100">
+            <Cloud size={16} className={isArmed ? 'text-blue-500' : 'text-slate-300'} />
+            <span className="text-[11px] font-black uppercase tracking-widest text-slate-500">Live Cloud</span>
+            <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+          </div>
         </div>
       </div>
 
@@ -137,6 +179,48 @@ const Dashboard: React.FC<DashboardProps> = ({ isArmed, isUnlocked }) => {
         </section>
       </div>
 
+      {/* Quick Fire Gallery - SHOW ALL SOUNDS */}
+      <section className="space-y-4">
+        <div className="flex items-center justify-between px-2">
+          <h2 className="text-xs font-black uppercase tracking-[0.2em] text-slate-400 flex items-center gap-2">
+            <Play size={14} className="text-green-600" /> Quick Fire Arsenal
+          </h2>
+          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Tap to trigger instantly</span>
+        </div>
+        
+        {sounds.length === 0 ? (
+          <div className="bg-white border border-slate-100 rounded-[32px] p-12 text-center">
+            <Music size={32} className="mx-auto text-slate-100 mb-4" />
+            <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">No sounds in database</p>
+          </div>
+        ) : (
+          <div className="flex gap-4 overflow-x-auto pb-6 pt-2 custom-scrollbar snap-x px-2">
+            {sounds.map(sound => (
+              <button
+                key={sound.id}
+                onClick={() => quickTrigger(sound)}
+                disabled={activePlaybackId !== null}
+                className={`flex-none w-40 h-48 rounded-[32px] p-6 flex flex-col justify-between items-center text-center transition-all snap-start border ${
+                  activePlaybackId === sound.id
+                  ? 'bg-green-600 border-green-500 text-white shadow-xl scale-95'
+                  : 'bg-white border-slate-100 text-slate-900 hover:border-green-200 hover:shadow-lg'
+                }`}
+              >
+                <div className={`w-14 h-14 rounded-2xl flex items-center justify-center transition-colors ${activePlaybackId === sound.id ? 'bg-white/20' : 'bg-green-50 text-green-600'}`}>
+                  {activePlaybackId === sound.id ? <RefreshCw size={24} className="animate-spin" /> : <Play size={24} fill="currentColor" />}
+                </div>
+                <div>
+                  <h4 className="font-black text-xs uppercase tracking-tight line-clamp-2">{sound.name}</h4>
+                  <span className={`text-[8px] font-black uppercase tracking-[0.2em] mt-2 block opacity-50`}>
+                    {sound.tag}
+                  </span>
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
+      </section>
+
       {/* Local Lock Warning */}
       {!isUnlocked && (
         <div className="bg-amber-50 border border-amber-100 rounded-[32px] p-8 flex flex-col md:flex-row items-center gap-6 shadow-sm">
@@ -153,7 +237,7 @@ const Dashboard: React.FC<DashboardProps> = ({ isArmed, isUnlocked }) => {
       )}
 
       {/* Footer Info */}
-      <div className="text-center md:text-left border-t border-slate-100 pt-10">
+      <div className="text-center md:text-left border-t border-slate-100 pt-10 pb-20">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <p className="text-[11px] font-black text-slate-300 uppercase tracking-[0.3em]">
             Precision Agri-Tech Control

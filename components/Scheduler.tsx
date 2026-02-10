@@ -108,6 +108,17 @@ const Scheduler: React.FC = () => {
     setEditingSchedule({ ...editingSchedule, soundIds: currentIds });
   };
 
+  const selectAllSounds = () => {
+    if (!editingSchedule) return;
+    const allIds = sounds.map(s => s.id);
+    setEditingSchedule({ ...editingSchedule, soundIds: allIds });
+  };
+
+  const deselectAllSounds = () => {
+    if (!editingSchedule) return;
+    setEditingSchedule({ ...editingSchedule, soundIds: [] });
+  };
+
   const daysOfWeek = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 
   return (
@@ -286,19 +297,33 @@ const Scheduler: React.FC = () => {
                       </button>
                     </div>
                     {editingSchedule.soundIds !== 'random' && (
-                      <div className="bg-slate-50 rounded-[24px] p-2 border border-slate-100 max-h-40 overflow-y-auto custom-scrollbar">
-                        {sounds.map(sound => (
-                          <div 
-                            key={sound.id}
-                            onClick={() => toggleSoundSelection(sound.id)}
-                            className={`flex items-center justify-between p-3 rounded-xl transition-all cursor-pointer mb-1 last:mb-0 ${Array.isArray(editingSchedule.soundIds) && editingSchedule.soundIds.includes(sound.id) ? 'bg-white shadow-sm ring-1 ring-green-200' : 'hover:bg-white/50'}`}
-                          >
-                            <span className={`text-[11px] font-bold ${Array.isArray(editingSchedule.soundIds) && editingSchedule.soundIds.includes(sound.id) ? 'text-green-900' : 'text-slate-500'}`}>{sound.name}</span>
-                            <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${Array.isArray(editingSchedule.soundIds) && editingSchedule.soundIds.includes(sound.id) ? 'bg-green-600 border-green-600' : 'border-slate-200'}`}>
-                              {Array.isArray(editingSchedule.soundIds) && editingSchedule.soundIds.includes(sound.id) && <Check size={10} className="text-white" strokeWidth={5} />}
-                            </div>
+                      <div className="space-y-2">
+                        <div className="flex justify-between items-center px-1">
+                          <span className="text-[9px] font-black uppercase text-slate-400">Library Selection</span>
+                          <div className="flex gap-2">
+                            <button onClick={selectAllSounds} className="text-[9px] font-black text-green-600 hover:text-green-700 uppercase">Use All</button>
+                            <span className="text-[9px] text-slate-300">/</span>
+                            <button onClick={deselectAllSounds} className="text-[9px] font-black text-slate-400 hover:text-slate-500 uppercase">None</button>
                           </div>
-                        ))}
+                        </div>
+                        <div className="bg-slate-50 rounded-[24px] p-2 border border-slate-100 max-h-48 overflow-y-auto custom-scrollbar">
+                          {sounds.length === 0 ? (
+                            <p className="p-4 text-center text-[10px] font-bold text-slate-400 uppercase">No sounds found</p>
+                          ) : (
+                            sounds.map(sound => (
+                              <div 
+                                key={sound.id}
+                                onClick={() => toggleSoundSelection(sound.id)}
+                                className={`flex items-center justify-between p-3 rounded-xl transition-all cursor-pointer mb-1 last:mb-0 ${Array.isArray(editingSchedule.soundIds) && editingSchedule.soundIds.includes(sound.id) ? 'bg-white shadow-sm ring-1 ring-green-200' : 'hover:bg-white/50'}`}
+                              >
+                                <span className={`text-[11px] font-bold ${Array.isArray(editingSchedule.soundIds) && editingSchedule.soundIds.includes(sound.id) ? 'text-green-900' : 'text-slate-500'}`}>{sound.name}</span>
+                                <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${Array.isArray(editingSchedule.soundIds) && editingSchedule.soundIds.includes(sound.id) ? 'bg-green-600 border-green-600' : 'border-slate-200'}`}>
+                                  {Array.isArray(editingSchedule.soundIds) && editingSchedule.soundIds.includes(sound.id) && <Check size={10} className="text-white" strokeWidth={5} />}
+                                </div>
+                              </div>
+                            ))
+                          )}
+                        </div>
                       </div>
                     )}
                   </div>

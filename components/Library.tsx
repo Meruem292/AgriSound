@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Music, Play, Plus, Search, Trash2, Download, Cloud, AlertCircle, ExternalLink, Info, Loader2 } from 'lucide-react';
+import { Music, Play, Plus, Search, Trash2, Download, Cloud, AlertCircle, ExternalLink, Info, Loader2, Database } from 'lucide-react';
 import { databaseService } from '../services/databaseService';
 import { supabaseService } from '../services/supabaseService';
 import { SoundFile } from '../types';
@@ -64,10 +64,16 @@ const Library: React.FC = () => {
 
   return (
     <div className="space-y-8 py-6">
-      <div className="flex justify-between items-end">
+      <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-black text-slate-900 tracking-tight">Audio Vault</h1>
-          <p className="text-slate-500 font-medium">Synced Cloud Library</p>
+          <div className="flex items-center gap-3 mb-1">
+            <h1 className="text-3xl font-black text-slate-900 tracking-tight">Audio Vault</h1>
+            <div className="bg-green-100 text-green-700 px-3 py-1 rounded-full flex items-center gap-2">
+              <Database size={12} />
+              <span className="text-[10px] font-black uppercase tracking-wider">{sounds.length} Assets</span>
+            </div>
+          </div>
+          <p className="text-slate-500 font-medium">Synchronized Sound Database</p>
         </div>
         <div className="flex gap-3">
           <input type="file" ref={fileInputRef} className="hidden" accept="audio/*" onChange={handleFileUpload} disabled={isUploading} />
@@ -127,14 +133,14 @@ const Library: React.FC = () => {
               <Info size={24} />
             </div>
             <p className="text-[11px] text-blue-900 font-bold uppercase tracking-wider leading-relaxed">
-              Ensure <strong>SUPABASE_URL</strong> and <strong>SUPABASE_ANON_KEY</strong> are set in your environment variables.
+              Every sound listed here is available for both <strong>Manual Triggers</strong> and <strong>Scheduled Events</strong>.
             </p>
           </div>
         </div>
       </div>
 
       {/* Responsive Grid Gallery */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pb-20">
         {sounds.length === 0 ? (
           <div className="col-span-full bg-white rounded-[40px] p-20 border-2 border-dashed border-slate-100 text-center">
             <Cloud size={64} className="mx-auto text-slate-100 mb-6" />
