@@ -30,8 +30,9 @@ const Library: React.FC = () => {
       };
       await databaseService.addSound(sound);
       await loadSounds();
-    } catch (error) {
+    } catch (error: any) {
       console.error("Upload failed:", error);
+      // Alerts are handled inside supabaseService for specific config errors
     } finally {
       setIsUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
@@ -40,16 +41,23 @@ const Library: React.FC = () => {
 
   const handleDelete = async (sound: SoundFile) => {
     if (confirm("Permanently delete this cloud asset?")) {
-      await supabaseService.deleteSound(sound.url);
-      await databaseService.deleteSound(sound.id);
-      await loadSounds();
+      try {
+        await supabaseService.deleteSound(sound.url);
+        await databaseService.deleteSound(sound.id);
+        await loadSounds();
+      } catch (err) {
+        console.error("Delete failed:", err);
+      }
     }
   };
 
   const previewSound = (url: string) => {
     const audio = new Audio(url);
     audio.crossOrigin = "anonymous";
-    audio.play().catch(e => console.error("Playback blocked:", e));
+    audio.play().catch(e => {
+      console.error("Playback blocked:", e);
+      alert("Playback blocked. Please ensure you've tapped 'Unlock Speaker' on the dashboard and your browser allows auto-play.");
+    });
   };
 
   const filteredSounds = sounds.filter(s => s.name.toLowerCase().includes(search.toLowerCase()));
@@ -69,7 +77,9 @@ const Library: React.FC = () => {
             className="bg-slate-900 text-white flex items-center gap-3 px-6 py-4 rounded-[24px] shadow-xl active:scale-95 transition-all disabled:opacity-50"
           >
             {isUploading ? <Loader2 size={20} className="animate-spin" /> : <Plus size={20} strokeWidth={3} />}
-            <span className="text-sm font-black uppercase tracking-widest hidden md:inline">Import Sound</span>
+            <span className="text-sm font-black uppercase tracking-widest hidden md:inline">
+              {isUploading ? 'Uploading...' : 'Import Sound'}
+            </span>
           </button>
         </div>
       </div>
@@ -117,7 +127,7 @@ const Library: React.FC = () => {
               <Info size={24} />
             </div>
             <p className="text-[11px] text-blue-900 font-bold uppercase tracking-wider leading-relaxed">
-              Cloud assets require an active field uplink to stream during scheduled trigger windows.
+              Ensure <strong>SUPABASE_URL</strong> and <strong>SUPABASE_ANON_KEY</strong> are set in your environment variables.
             </p>
           </div>
         </div>
@@ -128,7 +138,7 @@ const Library: React.FC = () => {
         {sounds.length === 0 ? (
           <div className="col-span-full bg-white rounded-[40px] p-20 border-2 border-dashed border-slate-100 text-center">
             <Cloud size={64} className="mx-auto text-slate-100 mb-6" />
-            <h3 className="text-xl font-black text-slate-300 uppercase tracking-widest">Library Offline</h3>
+            <h3 className="text-xl font-black text-slate-300 uppercase tracking-widest">Library Empty</h3>
             <p className="text-slate-400 text-sm mt-2">Upload audio assets to initialize the field array.</p>
           </div>
         ) : (
@@ -144,7 +154,7 @@ const Library: React.FC = () => {
                 <h3 className="font-black text-slate-900 truncate text-sm uppercase tracking-tight">{sound.name}</h3>
                 <div className="flex items-center gap-1.5 mt-1">
                   <div className="w-1.5 h-1.5 rounded-full bg-blue-400" />
-                  <span className="text-[9px] text-slate-400 font-black uppercase tracking-widest">Supabase Sync</span>
+                  <span className="text-[9px] text-slate-400 font-black uppercase tracking-widest">Cloud Asset</span>
                 </div>
               </div>
               <button 
