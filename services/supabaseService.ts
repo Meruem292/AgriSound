@@ -3,43 +3,53 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
 let supabaseInstance: SupabaseClient | null = null;
 
+/**
+ * Aggressively searches for an environment variable across common storage locations
+ * and with common framework prefixes.
+ */
 const getEnv = (key: string): string | undefined => {
-  // 1. Try exact matches first
-  if (typeof process !== 'undefined' && process.env && process.env[key]) return process.env[key];
-  try {
-    const meta = (import.meta as any);
-    if (meta.env && meta.env[key]) return meta.env[key];
-  } catch (e) {}
+  const metaEnv = (import.meta as any).env || {};
+  const procEnv = (typeof process !== 'undefined' ? process.env : {}) || {};
 
-  // 2. Try common prefixes
+  const check = (k: string) => {
+    if (metaEnv[k]) return metaEnv[k];
+    if (procEnv[k]) return procEnv[k];
+    return undefined;
+  };
+
+  // 1. Exact match
+  let val = check(key);
+  if (val) return val;
+
+  // 2. Framework-specific prefixes
   const prefixes = ['VITE_', 'NEXT_PUBLIC_', 'VITE_NEXT_PUBLIC_'];
-  for (const pref of prefixes) {
-    const fullKey = `${pref}${key}`;
-    
-    if (typeof process !== 'undefined' && process.env && process.env[fullKey]) {
-      return process.env[fullKey];
-    }
-    
-    try {
-      const meta = (import.meta as any);
-      if (meta.env && meta.env[fullKey]) {
-        return meta.env[fullKey];
-      }
-    } catch (e) {}
+  for (const p of prefixes) {
+    val = check(`${p}${key}`);
+    if (val) return val;
   }
 
-  // 3. Fallback to process.env.API_KEY logic if it was used for other things
+  // 3. Scan all keys for a suffix match (case insensitive)
+  const allKeys = [...Object.keys(metaEnv), ...Object.keys(procEnv)];
+  const upperKey = key.toUpperCase();
+  for (const k of allKeys) {
+    if (k.toUpperCase().endsWith(upperKey)) {
+      const found = check(k);
+      if (found) return found;
+    }
+  }
+
   return undefined;
 };
 
 const getSupabase = (): { client: SupabaseClient | null; missingKeys: string[] } => {
   if (supabaseInstance) return { client: supabaseInstance, missingKeys: [] };
   
-  // Aggressively search for URL
+  // Try all possible URL variations based on the user's dashboard screenshot
   const url = getEnv('SUPABASE_URL') || 
-              getEnv('NEXT_PUBLIC_SUPABASE_URL');
+              getEnv('NEXT_PUBLIC_SUPABASE_URL') ||
+              getEnv('VITE_SUPABASE_URL');
   
-  // Aggressively search for Key (covering all common variants seen in dashboards)
+  // Try all possible Key variations (Supabase Anon Key is the primary one)
   const key = getEnv('SUPABASE_ANON_KEY') || 
               getEnv('SUPABASE_PUBLISHABLE_KEY') || 
               getEnv('SUPABASE_PUBLISHABLE_DEFAULT_KEY') ||
@@ -49,7 +59,7 @@ const getSupabase = (): { client: SupabaseClient | null; missingKeys: string[] }
   
   const missingKeys = [];
   if (!url) missingKeys.push('SUPABASE_URL');
-  if (!key) missingKeys.push('SUPABASE_ANON_KEY/PUBLISHABLE_KEY');
+  if (!key) missingKeys.push('SUPABASE_ANON_KEY / PUBLISHABLE_KEY');
 
   if (url && key) {
     try {
@@ -71,7 +81,7 @@ export const supabaseService = {
     const { client, missingKeys } = getSupabase();
     
     if (!client) {
-      const msg = `SUPABASE CONFIGURATION MISSING:\n\nEnvironment variables not detected.\nFound keys: ${missingKeys.join(', ')}\n\nPlease ensure your platform dashboard has:\n- SUPABASE_URL\n- SUPABASE_ANON_KEY\n(Optionally with VITE_ or NEXT_PUBLIC_ prefixes)`;
+      const msg = `SUPABASE CONFIGURATION MISSING:\n\nThe app could not find your Supabase credentials.\n\nRequired: ${missingKeys.join(', ')}\n\nPlease ensure your dashboard has:\n- VITE_NEXT_PUBLIC_SUPABASE_URL\n- VITE_NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY\n(Or similar prefixes)`;
       alert(msg);
       throw new Error(msg);
     }
@@ -85,13 +95,13 @@ export const supabaseService = {
       const errObj = error as any;
       
       if (errObj.status === 403 || errObj.message?.includes('row-level security')) {
-        const msg = `RLS POLICY VIOLATION (403):\n\nYour policies might be too restrictive.\n\nTo fix this:\n1. Go to Supabase > Storage > Policies.\n2. Create a NEW policy for the "${BUCKET_NAME}" bucket.\n3. Select "Full access to all users" (SELECT, INSERT, UPDATE, DELETE).\n4. Role: anon.\n5. Condition: true (or empty).`;
+        const msg = `RLS POLICY VIOLATION (403):\n\nYour policies are blocking the upload.\n\nTo fix:\n1. Supabase > Storage > Policies\n2. New policy for "${BUCKET_NAME}"\n3. Select "Full access" for anon users.`;
         alert(msg);
         throw new Error(msg);
       }
       
       if (errObj.status === 404 || errObj.message?.toLowerCase().includes('not found')) {
-        const msg = `Bucket "${BUCKET_NAME}" not found.\n\nPlease go to Supabase > Storage and create a PUBLIC bucket named exactly "${BUCKET_NAME}".`;
+        const msg = `Bucket "${BUCKET_NAME}" not found.\n\nPlease create a PUBLIC bucket named exactly "${BUCKET_NAME}" in Supabase Storage.`;
         alert(msg);
         throw new Error(msg);
       }
