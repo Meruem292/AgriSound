@@ -4,15 +4,27 @@ import { getDatabase, ref, onValue, set, off, Database, remove } from 'firebase/
 import { Schedule } from '../types';
 
 const getEnv = (key: string): string | undefined => {
-  const searchKeys = [`VITE_${key}`, key, `NEXT_PUBLIC_${key}`];
-  for (const k of searchKeys) {
+  // 1. Try exact matches first
+  if (typeof process !== 'undefined' && process.env && process.env[key]) return process.env[key];
+  try {
+    const meta = (import.meta as any);
+    if (meta.env && meta.env[key]) return meta.env[key];
+  } catch (e) {}
+
+  // 2. Try common prefixes
+  const prefixes = ['VITE_', 'NEXT_PUBLIC_', 'VITE_NEXT_PUBLIC_'];
+  for (const pref of prefixes) {
+    const fullKey = `${pref}${key}`;
+    
+    if (typeof process !== 'undefined' && process.env && process.env[fullKey]) {
+      return process.env[fullKey];
+    }
+    
     try {
       const meta = (import.meta as any);
-      if (typeof meta !== 'undefined' && meta.env && meta.env[k]) return meta.env[k];
-    } catch (e) {}
-    try {
-      // @ts-ignore
-      if (typeof process !== 'undefined' && process.env && process.env[k]) return process.env[k];
+      if (meta.env && meta.env[fullKey]) {
+        return meta.env[fullKey];
+      }
     } catch (e) {}
   }
   return undefined;

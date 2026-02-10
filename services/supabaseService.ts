@@ -4,32 +4,52 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js';
 let supabaseInstance: SupabaseClient | null = null;
 
 const getEnv = (key: string): string | undefined => {
-  const searchKeys = [`VITE_${key}`, key, `NEXT_PUBLIC_${key}`];
-  for (const k of searchKeys) {
+  // 1. Try exact matches first
+  if (typeof process !== 'undefined' && process.env && process.env[key]) return process.env[key];
+  try {
+    const meta = (import.meta as any);
+    if (meta.env && meta.env[key]) return meta.env[key];
+  } catch (e) {}
+
+  // 2. Try common prefixes
+  const prefixes = ['VITE_', 'NEXT_PUBLIC_', 'VITE_NEXT_PUBLIC_'];
+  for (const pref of prefixes) {
+    const fullKey = `${pref}${key}`;
+    
+    if (typeof process !== 'undefined' && process.env && process.env[fullKey]) {
+      return process.env[fullKey];
+    }
+    
     try {
       const meta = (import.meta as any);
-      if (typeof meta !== 'undefined' && meta.env && meta.env[k]) return meta.env[k];
-    } catch (e) {}
-    try {
-      // @ts-ignore
-      if (typeof process !== 'undefined' && process.env && process.env[k]) return process.env[k];
+      if (meta.env && meta.env[fullKey]) {
+        return meta.env[fullKey];
+      }
     } catch (e) {}
   }
+
+  // 3. Fallback to process.env.API_KEY logic if it was used for other things
   return undefined;
 };
 
 const getSupabase = (): { client: SupabaseClient | null; missingKeys: string[] } => {
   if (supabaseInstance) return { client: supabaseInstance, missingKeys: [] };
   
-  const url = getEnv('SUPABASE_URL') || getEnv('NEXT_PUBLIC_SUPABASE_URL');
+  // Aggressively search for URL
+  const url = getEnv('SUPABASE_URL') || 
+              getEnv('NEXT_PUBLIC_SUPABASE_URL');
+  
+  // Aggressively search for Key (covering all common variants seen in dashboards)
   const key = getEnv('SUPABASE_ANON_KEY') || 
-              getEnv('SUPABASE_PUBLISHABLE_DEFAULT_KEY') || 
-              getEnv('NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY') ||
-              getEnv('NEXT_PUBLIC_SUPABASE_ANON_KEY');
+              getEnv('SUPABASE_PUBLISHABLE_KEY') || 
+              getEnv('SUPABASE_PUBLISHABLE_DEFAULT_KEY') ||
+              getEnv('NEXT_PUBLIC_SUPABASE_ANON_KEY') ||
+              getEnv('NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY') ||
+              getEnv('NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY');
   
   const missingKeys = [];
   if (!url) missingKeys.push('SUPABASE_URL');
-  if (!key) missingKeys.push('SUPABASE_ANON_KEY');
+  if (!key) missingKeys.push('SUPABASE_ANON_KEY/PUBLISHABLE_KEY');
 
   if (url && key) {
     try {
@@ -51,7 +71,7 @@ export const supabaseService = {
     const { client, missingKeys } = getSupabase();
     
     if (!client) {
-      const msg = `SUPABASE CONFIGURATION MISSING:\n\nThe following environment variables are not set in your platform dashboard:\n${missingKeys.map(k => `- ${k}`).join('\n')}\n\nPlease add these to your Secrets/Environment Variables and restart the app.`;
+      const msg = `SUPABASE CONFIGURATION MISSING:\n\nEnvironment variables not detected.\nFound keys: ${missingKeys.join(', ')}\n\nPlease ensure your platform dashboard has:\n- SUPABASE_URL\n- SUPABASE_ANON_KEY\n(Optionally with VITE_ or NEXT_PUBLIC_ prefixes)`;
       alert(msg);
       throw new Error(msg);
     }
