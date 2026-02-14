@@ -3,30 +3,40 @@ import { initializeApp, getApp, getApps, FirebaseApp } from 'firebase/app';
 import { getDatabase, ref, onValue, set, off, Database, remove } from 'firebase/database';
 import { Schedule } from '../types';
 
+/**
+ * Robust environment variable retrieval for both local and cloud environments.
+ */
 const getEnv = (key: string): string | undefined => {
-  // 1. Try exact matches first
-  if (typeof process !== 'undefined' && process.env && process.env[key]) return process.env[key];
-  try {
-    const meta = (import.meta as any);
-    if (meta.env && meta.env[key]) return meta.env[key];
-  } catch (e) {}
+  const metaEnv = (import.meta as any).env || {};
+  const procEnv = (typeof process !== 'undefined' ? process.env : {}) || {};
 
-  // 2. Try common prefixes
+  const check = (k: string) => {
+    if (metaEnv[k]) return metaEnv[k];
+    if (procEnv[k]) return procEnv[k];
+    return undefined;
+  };
+
+  // 1. Exact match
+  let val = check(key);
+  if (val) return val;
+
+  // 2. Framework prefixes
   const prefixes = ['VITE_', 'NEXT_PUBLIC_', 'VITE_NEXT_PUBLIC_'];
-  for (const pref of prefixes) {
-    const fullKey = `${pref}${key}`;
-    
-    if (typeof process !== 'undefined' && process.env && process.env[fullKey]) {
-      return process.env[fullKey];
-    }
-    
-    try {
-      const meta = (import.meta as any);
-      if (meta.env && meta.env[fullKey]) {
-        return meta.env[fullKey];
-      }
-    } catch (e) {}
+  for (const p of prefixes) {
+    val = check(`${p}${key}`);
+    if (val) return val;
   }
+
+  // 3. Scan all keys for suffix match
+  const allKeys = [...Object.keys(metaEnv), ...Object.keys(procEnv)];
+  const upperKey = key.toUpperCase();
+  for (const k of allKeys) {
+    if (k.toUpperCase().endsWith(upperKey)) {
+      const found = check(k);
+      if (found) return found;
+    }
+  }
+
   return undefined;
 };
 
@@ -35,6 +45,7 @@ let dbInstance: Database | null = null;
 
 const initFirebase = (): FirebaseApp | null => {
   if (appInstance) return appInstance;
+  
   const config = {
     apiKey: getEnv('FIREBASE_API_KEY'),
     authDomain: getEnv('FIREBASE_AUTH_DOMAIN'),
@@ -45,11 +56,16 @@ const initFirebase = (): FirebaseApp | null => {
     appId: getEnv('FIREBASE_APP_ID')
   };
 
-  if (!config.apiKey) return null;
+  if (!config.apiKey || !config.databaseURL) {
+    console.error("Firebase Config Missing:", config);
+    return null;
+  }
+
   try {
     appInstance = !getApps().length ? initializeApp(config) : getApp();
     return appInstance;
   } catch (err) {
+    console.error("Firebase init error:", err);
     return null;
   }
 };
@@ -58,76 +74,91 @@ const getDb = (): Database | null => {
   if (dbInstance) return dbInstance;
   const app = initFirebase();
   if (!app) return null;
+  
   const dbUrl = getEnv('FIREBASE_DATABASE_URL');
-  if (!dbUrl) return null;
   try {
     dbInstance = getDatabase(app, dbUrl);
     return dbInstance;
   } catch (err) {
+    console.error("Database connection error:", err);
     return null;
   }
+};
+
+const notifyMissingConfig = (action: string) => {
+  const msg = `FIREBASE CONFIGURATION ERROR:\n\nCannot ${action}. The app could not find your Firebase credentials.\n\nPlease ensure your dashboard has:\n- VITE_FIREBASE_API_KEY\n- VITE_FIREBASE_DATABASE_URL\n...and other required keys.`;
+  console.error(msg);
+  // We avoid alert() here to prevent spamming, but log to console
 };
 
 export const firebaseService = {
   subscribeToMainSwitch: (callback: (isOn: boolean) => void) => {
     const db = getDb();
-    if (!db) return () => {};
-    try {
-      const switchRef = ref(db, 'system/mainSwitch');
-      onValue(switchRef, (snapshot) => {
-        callback(snapshot.val() === true);
-      });
-      return () => off(switchRef);
-    } catch (e) {
+    if (!db) {
+      notifyMissingConfig('subscribe to Main Switch');
       return () => {};
     }
+    const switchRef = ref(db, 'system/mainSwitch');
+    onValue(switchRef, (snapshot) => {
+      callback(snapshot.val() === true);
+    });
+    return () => off(switchRef);
   },
   
   setMainSwitch: async (isOn: boolean) => {
     const db = getDb();
-    if (!db) return;
-    try {
-      await set(ref(db, 'system/mainSwitch'), isOn);
-    } catch (e) {}
+    if (!db) {
+      alert("Firebase not connected. Cannot toggle Main Switch.");
+      return;
+    }
+    await set(ref(db, 'system/mainSwitch'), isOn);
+  },
+
+  subscribeToDevicePower: (callback: (isPowered: boolean) => void) => {
+    const db = getDb();
+    if (!db) {
+      notifyMissingConfig('subscribe to Device Power');
+      return () => {};
+    }
+    const powerRef = ref(db, 'system/devicePower');
+    onValue(powerRef, (snapshot) => {
+      callback(snapshot.val() === true);
+    });
+    return () => off(powerRef);
+  },
+
+  setDevicePower: async (isPowered: boolean) => {
+    const db = getDb();
+    if (!db) {
+      alert("Firebase not connected. Cannot toggle Device Power.");
+      return;
+    }
+    await set(ref(db, 'system/devicePower'), isPowered);
   },
 
   subscribeToSchedules: (callback: (schedules: Schedule[]) => void) => {
     const db = getDb();
-    if (!db) return () => {};
-    try {
-      const schedulesRef = ref(db, 'schedules');
-      onValue(schedulesRef, (snapshot) => {
-        const data = snapshot.val();
-        if (data) {
-          const scheduleList = Object.values(data) as Schedule[];
-          callback(scheduleList);
-        } else {
-          callback([]);
-        }
-      });
-      return () => off(schedulesRef);
-    } catch (e) {
+    if (!db) {
+      notifyMissingConfig('subscribe to Schedules');
       return () => {};
     }
+    const schedulesRef = ref(db, 'schedules');
+    onValue(schedulesRef, (snapshot) => {
+      const data = snapshot.val();
+      callback(data ? (Object.values(data) as Schedule[]) : []);
+    });
+    return () => off(schedulesRef);
   },
 
   saveScheduleRemote: async (schedule: Schedule) => {
     const db = getDb();
     if (!db) return;
-    try {
-      await set(ref(db, `schedules/${schedule.id}`), schedule);
-    } catch (e) {
-      console.error("[Firebase] Failed to save schedule:", e);
-    }
+    await set(ref(db, `schedules/${schedule.id}`), schedule);
   },
 
   deleteScheduleRemote: async (id: string) => {
     const db = getDb();
     if (!db) return;
-    try {
-      await remove(ref(db, `schedules/${id}`));
-    } catch (e) {
-      console.error("[Firebase] Failed to delete schedule:", e);
-    }
+    await remove(ref(db, `schedules/${id}`));
   }
 };

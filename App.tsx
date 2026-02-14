@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Layout from './components/Layout';
 import Dashboard from './components/Dashboard';
 import Scheduler from './components/Scheduler';
@@ -13,12 +13,28 @@ import { ShieldAlert, Zap } from 'lucide-react';
 const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [isOnline, setIsOnline] = useState(navigator.onLine);
-  
-  // Local "Armed" state (Browser audio engine unlocked)
   const [isLocallyUnlocked, setIsLocallyUnlocked] = useState(false);
   
-  // Remote "Master Switch" state from Firebase
+  // States synced with Firebase
   const [isMasterSwitchOn, setIsMasterSwitchOn] = useState(false);
+  const [isDevicePowered, setIsDevicePowered] = useState(false);
+
+  // Use refs to keep track of current state for the worker interval
+  const masterSwitchRef = useRef(isMasterSwitchOn);
+  const devicePowerRef = useRef(isDevicePowered);
+  const locallyUnlockedRef = useRef(isLocallyUnlocked);
+
+  useEffect(() => {
+    masterSwitchRef.current = isMasterSwitchOn;
+  }, [isMasterSwitchOn]);
+
+  useEffect(() => {
+    devicePowerRef.current = isDevicePowered;
+  }, [isDevicePowered]);
+
+  useEffect(() => {
+    locallyUnlockedRef.current = isLocallyUnlocked;
+  }, [isLocallyUnlocked]);
 
   useEffect(() => {
     const handleOnline = () => setIsOnline(true);
@@ -27,116 +43,123 @@ const App: React.FC = () => {
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
 
-    // --- FIREBASE SYNC: MASTER SWITCH ---
-    const unsubscribeFirebaseSwitch = firebaseService.subscribeToMainSwitch((isOn) => {
-      console.log(`[Firebase] Remote Switch updated: ${isOn ? 'ON' : 'OFF'}`);
-      setIsMasterSwitchOn(isOn);
-    });
+    let unsubSwitch = () => {};
+    let unsubPower = () => {};
+    let unsubScheds = () => {};
 
-    // --- FIREBASE SYNC: SCHEDULES ---
-    const unsubscribeFirebaseSchedules = firebaseService.subscribeToSchedules(async (remoteSchedules) => {
-      console.log(`[Firebase] Syncing ${remoteSchedules.length} schedules to local storage...`);
-      await databaseService.ensureInit();
-      
-      // Update local store with remote data
-      // For a robust implementation, we might clear local and replace, 
-      // but for this app, we'll just save each one.
-      for (const sched of remoteSchedules) {
-        await databaseService.saveSchedule(sched);
-      }
-    });
+    const initializeSubscriptions = () => {
+      unsubSwitch();
+      unsubPower();
+      unsubScheds();
 
-    // --- AUTOMATED SCHEDULING WORKER ---
-    const checkSchedules = async () => {
-      // Logic requirement: 
-      // 1. Browser must be unlocked (isLocallyUnlocked)
-      // 2. Remote Master Switch must be ON (isMasterSwitchOn)
-      if (!isLocallyUnlocked || !isMasterSwitchOn) return;
-
-      try {
+      unsubSwitch = firebaseService.subscribeToMainSwitch(setIsMasterSwitchOn);
+      unsubPower = firebaseService.subscribeToDevicePower(setIsDevicePowered);
+      unsubScheds = firebaseService.subscribeToSchedules(async (remoteSchedules) => {
         await databaseService.ensureInit();
-        const deviceState = await databaseService.getDeviceState();
-        
-        if (deviceState.status !== DeviceStatus.SLEEPING) return;
+        for (const sched of remoteSchedules) {
+          await databaseService.saveSchedule(sched);
+        }
+      });
+    };
 
-        const schedules = await databaseService.getSchedules();
-        const now = new Date();
-        
-        const timeFormatter = new Intl.DateTimeFormat('en-GB', {
-          timeZone: "Asia/Manila",
-          hour: '2-digit',
-          minute: '2-digit',
-          hour12: false
-        });
-        
-        const currentHHmm = timeFormatter.format(now);
-        
-        const phDayString = now.toLocaleString("en-US", {
-          timeZone: "Asia/Manila",
-          weekday: 'long'
-        });
-        
-        const daysMap: Record<string, number> = {
-          'Sunday': 0, 'Monday': 1, 'Tuesday': 2, 'Wednesday': 3, 
-          'Thursday': 4, 'Friday': 5, 'Saturday': 6
-        };
-        const currentDay = daysMap[phDayString];
+    if (isOnline) {
+      initializeSubscriptions();
+    }
 
+    // Main background worker for automated triggers and anticipatory power
+    const workerInterval = setInterval(async () => {
+      await databaseService.ensureInit();
+      const schedules = await databaseService.getSchedules();
+      const now = new Date();
+      
+      const timeFormatter = new Intl.DateTimeFormat('en-GB', {
+        timeZone: "Asia/Manila",
+        hour: '2-digit', minute: '2-digit', hour12: false
+      });
+      const currentHHmm = timeFormatter.format(now);
+      
+      const phDayString = now.toLocaleString("en-US", { timeZone: "Asia/Manila", weekday: 'long' });
+      const daysMap: Record<string, number> = { 'Sunday': 0, 'Monday': 1, 'Tuesday': 2, 'Wednesday': 3, 'Thursday': 4, 'Friday': 5, 'Saturday': 6 };
+      const currentDay = daysMap[phDayString];
+
+      // Anticipatory Logic: Look 5 minutes ahead (window check)
+      let upcomingTrigger = false;
+      const nowTimeInMins = now.getHours() * 60 + now.getMinutes();
+
+      for (const s of schedules) {
+        if (!s.isActive || !s.days.includes(currentDay)) continue;
+        
+        const [sHour, sMin] = s.time.split(':').map(Number);
+        const sTimeInMins = sHour * 60 + sMin;
+        const diff = sTimeInMins - nowTimeInMins;
+
+        // If a schedule is starting in the next 1 to 5 minutes
+        if (diff > 0 && diff <= 5) {
+          upcomingTrigger = true;
+          break;
+        }
+      }
+
+      // Automatically turn on if a schedule is approaching
+      if (upcomingTrigger) {
+        if (!masterSwitchRef.current) {
+          console.log("[AgriSound] Anticipatory: Arming Master Switch");
+          await firebaseService.setMainSwitch(true);
+        }
+        if (!devicePowerRef.current) {
+          console.log("[AgriSound] Anticipatory: Powering On Device");
+          await firebaseService.setDevicePower(true);
+        }
+      }
+
+      // Playback Execution
+      if (locallyUnlockedRef.current && masterSwitchRef.current && devicePowerRef.current) {
         for (const schedule of schedules) {
-          if (!schedule.isActive) continue;
-
-          const timeMatch = schedule.time === currentHHmm;
-          const dayMatch = schedule.days.includes(currentDay);
+          if (!schedule.isActive || !schedule.days.includes(currentDay)) continue;
           
-          const lastRunMs = schedule.lastRunTimestamp || 0;
-          const msSinceLastRun = Date.now() - lastRunMs;
-          const alreadyRanThisMinute = msSinceLastRun < 61000;
+          const timeMatch = schedule.time === currentHHmm;
+          const alreadyRan = (Date.now() - (schedule.lastRunTimestamp || 0)) < 61000;
 
-          if (timeMatch && dayMatch && !alreadyRanThisMinute) {
-            console.log(`[AgriSound Worker] Match: ${schedule.name}`);
-            const updatedSchedule = { ...schedule, lastRunTimestamp: Date.now() };
-            await databaseService.saveSchedule(updatedSchedule);
-            // Also update remote so other devices see the last run
-            await firebaseService.saveScheduleRemote(updatedSchedule);
+          if (timeMatch && !alreadyRan) {
+            const updated = { ...schedule, lastRunTimestamp: Date.now() };
+            await databaseService.saveSchedule(updated);
+            await firebaseService.saveScheduleRemote(updated);
             
+            console.log(`[AgriSound] Executing scheduled trigger: ${schedule.name}`);
             databaseService.performPlayback('scheduled', schedule.id);
           }
         }
-      } catch (error) {
-        console.error("[AgriSound Worker] Error:", error);
       }
-    };
-
-    const workerInterval = setInterval(checkSchedules, 10000); 
+    }, 10000); 
     
     return () => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
-      unsubscribeFirebaseSwitch();
-      unsubscribeFirebaseSchedules();
+      unsubSwitch();
+      unsubPower();
+      unsubScheds();
       clearInterval(workerInterval);
     };
-  }, [isLocallyUnlocked, isMasterSwitchOn]);
+  }, [isOnline]); // Depend on online status to re-init subscriptions if needed
 
   const armSystem = () => {
     const silentAudio = new Audio();
     silentAudio.src = 'data:audio/wav;base64,UklGRigAAABXQVZFRm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQQAAAAAAA==';
-    silentAudio.play().catch(() => {});
-    setIsLocallyUnlocked(true);
+    silentAudio.play().then(() => {
+      setIsLocallyUnlocked(true);
+    }).catch((e) => {
+      console.warn("Unlock failed, browser still blocking", e);
+      setIsLocallyUnlocked(true); // Still set to true to try anyway
+    });
   };
 
   const renderContent = () => {
     switch (activeTab) {
-      case 'dashboard': return (
-        <Dashboard 
-          isArmed={isMasterSwitchOn} 
-          isUnlocked={isLocallyUnlocked} 
-        />
-      );
+      case 'dashboard': return <Dashboard isArmed={isMasterSwitchOn} isDevicePowered={isDevicePowered} isUnlocked={isLocallyUnlocked} />;
       case 'scheduler': return <Scheduler />;
       case 'library': return <Library />;
       case 'logs': return <Logs />;
-      default: return <Dashboard isArmed={isMasterSwitchOn} isUnlocked={isLocallyUnlocked} />;
+      default: return <Dashboard isArmed={isMasterSwitchOn} isDevicePowered={isDevicePowered} isUnlocked={isLocallyUnlocked} />;
     }
   };
 
@@ -147,19 +170,13 @@ const App: React.FC = () => {
           <div className="w-24 h-24 bg-green-500/20 rounded-full flex items-center justify-center mb-6 border border-green-500/30">
             <ShieldAlert size={48} className="text-green-500" />
           </div>
-          <h1 className="text-3xl font-black text-white mb-2 tracking-tighter">Audio Locked</h1>
+          <h1 className="text-3xl font-black text-white mb-2 tracking-tighter uppercase">Field Audio Locked</h1>
           <p className="text-slate-400 text-sm mb-12 max-w-[280px] leading-relaxed">
-            Browsers require a user gesture to enable automated background audio. Tap to unlock the device speaker.
+            Browsers block automated audio until you interact. Tap to grant <strong>AgriSound</strong> speaker permissions.
           </p>
-          <button 
-            onClick={armSystem}
-            className="group relative w-full max-w-xs bg-green-600 hover:bg-green-500 text-white py-6 rounded-3xl font-black text-lg uppercase tracking-widest shadow-2xl shadow-green-900/40 active:scale-95 transition-all flex items-center justify-center gap-3 overflow-hidden"
-          >
-            <div className="absolute inset-0 bg-white/10 translate-y-full group-hover:translate-y-0 transition-transform duration-300" />
-            <Zap size={24} fill="currentColor" />
-            Unlock Speaker
+          <button onClick={armSystem} className="group relative w-full max-w-xs bg-green-600 hover:bg-green-500 text-white py-6 rounded-3xl font-black text-lg uppercase tracking-widest shadow-2xl active:scale-95 transition-all flex items-center justify-center gap-3">
+            <Zap size={24} fill="currentColor" /> Unlock Field Speaker
           </button>
-          <p className="mt-6 text-[10px] text-slate-500 font-bold uppercase tracking-widest">Local Interaction Required for Background Playback</p>
         </div>
       )}
       {renderContent()}
