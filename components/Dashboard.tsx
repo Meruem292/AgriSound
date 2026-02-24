@@ -208,7 +208,7 @@ const Dashboard: React.FC<DashboardProps> = ({ isArmed, isDevicePowered, isUnloc
         <div className="space-y-1">
           <h4 className="text-[11px] font-black uppercase tracking-widest text-amber-900">Proactive Power Management</h4>
           <p className="text-[10px] text-amber-800 font-bold uppercase tracking-wider leading-relaxed opacity-80">
-            System automatically Arms and Powers On 5 minutes before scheduled field events to ensure peak readiness.
+            System automatically Arms and Powers On 1 minute before scheduled field events to ensure peak readiness.
           </p>
         </div>
       </div>

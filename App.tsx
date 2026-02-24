@@ -140,6 +140,7 @@ const App: React.FC = () => {
     const workerInterval = setInterval(async () => {
       await databaseService.ensureInit();
       const schedules = await databaseService.getSchedules();
+      const deviceState = await databaseService.getDeviceState();
       const now = new Date();
       
       const timeFormatter = new Intl.DateTimeFormat('en-GB', {
@@ -152,7 +153,7 @@ const App: React.FC = () => {
       const daysMap: Record<string, number> = { 'Sunday': 0, 'Monday': 1, 'Tuesday': 2, 'Wednesday': 3, 'Thursday': 4, 'Friday': 5, 'Saturday': 6 };
       const currentDay = daysMap[phDayString];
 
-      // Anticipatory Logic: Look 5 minutes ahead (window check)
+      // Anticipatory Logic: Look 1 minute ahead (window check)
       let upcomingTrigger = false;
       const nowTimeInMins = now.getHours() * 60 + now.getMinutes();
 
@@ -163,8 +164,8 @@ const App: React.FC = () => {
         const sTimeInMins = sHour * 60 + sMin;
         const diff = sTimeInMins - nowTimeInMins;
 
-        // If a schedule is starting in the next 1 to 5 minutes
-        if (diff > 0 && diff <= 5) {
+        // If a schedule is starting in the next 0 to 1 minutes
+        if (diff >= 0 && diff <= 1) {
           upcomingTrigger = true;
           break;
         }
@@ -179,6 +180,20 @@ const App: React.FC = () => {
         if (!devicePowerRef.current) {
           console.log("[AgriSound] Anticipatory: Powering On Device");
           await firebaseService.setDevicePower(true);
+        }
+      } else {
+        // Automatically turn off if no schedule is approaching and last playback was > 1 min ago
+        if (masterSwitchRef.current || devicePowerRef.current) {
+          const lastPlaybackAge = Date.now() - deviceState.lastSyncTime;
+          const isSystemIdle = deviceState.status === DeviceStatus.SLEEPING;
+          
+          // Only auto-off if we are not in the middle of a minute that might have a trigger
+          // (though upcomingTrigger should handle diff=0)
+          if (isSystemIdle && lastPlaybackAge > 60000) {
+            console.log("[AgriSound] Auto-Shutdown: Disarming and Powering Off");
+            await firebaseService.setMainSwitch(false);
+            await firebaseService.setDevicePower(false);
+          }
         }
       }
 
