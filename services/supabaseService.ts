@@ -77,7 +77,7 @@ const getSupabase = (): { client: SupabaseClient | null; missingKeys: string[] }
 const BUCKET_NAME = 'sounds';
 
 export const supabaseService = {
-  uploadSound: async (file: File | Blob, fileName: string): Promise<string> => {
+  uploadSound: async (file: File | Blob, fileName: string): Promise<{ publicUrl: string; storagePath: string }> => {
     const { client, missingKeys } = getSupabase();
     
     if (!client) {
@@ -112,7 +112,31 @@ export const supabaseService = {
       .from(BUCKET_NAME)
       .getPublicUrl(path);
 
-    return publicUrl;
+    return { publicUrl, storagePath: path };
+  },
+
+  listSounds: async (): Promise<{ name: string; url: string }[]> => {
+    const { client } = getSupabase();
+    if (!client) return [];
+
+    const { data, error } = await client.storage
+      .from(BUCKET_NAME)
+      .list('', { limit: 100 });
+
+    if (error) {
+      console.error("Error listing sounds:", error);
+      return [];
+    }
+
+    return (data || []).map(file => {
+      const { data: { publicUrl } } = client.storage
+        .from(BUCKET_NAME)
+        .getPublicUrl(file.name);
+      return {
+        name: file.name,
+        url: publicUrl
+      };
+    });
   },
 
   deleteSound: async (url: string): Promise<void> => {

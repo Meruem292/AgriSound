@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Music, Play, Plus, Search, Trash2, Download, Cloud, AlertCircle, ExternalLink, Info, Loader2, Database } from 'lucide-react';
+import { Music, Play, Plus, Search, Trash2, Download, Cloud, AlertCircle, ExternalLink, Info, Loader2, Database, RefreshCw } from 'lucide-react';
 import { databaseService } from '../services/databaseService';
 import { supabaseService } from '../services/supabaseService';
 import { firebaseService } from '../services/firebaseService';
@@ -10,6 +10,7 @@ const Library: React.FC = () => {
   const [sounds, setSounds] = useState<SoundFile[]>([]);
   const [search, setSearch] = useState('');
   const [isUploading, setIsUploading] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -19,16 +20,39 @@ const Library: React.FC = () => {
     return () => unsub();
   }, []);
 
+  const syncCloud = async () => {
+    setIsSyncing(true);
+    try {
+      const cloudFiles = await supabaseService.listSounds();
+      for (const file of cloudFiles) {
+        const id = file.name.split('.')[0].replace(/[^a-z0-9]/gi, '_');
+        const sound: SoundFile = {
+          id: id,
+          name: file.name.split('-').slice(1).join('-').split('.')[0] || file.name.split('.')[0],
+          fileName: file.name,
+          url: file.url,
+          tag: 'other',
+          duration: 0
+        };
+        await firebaseService.saveSoundRemote(sound);
+      }
+    } catch (err) {
+      console.error("Sync failed:", err);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     setIsUploading(true);
     try {
-      const publicUrl = await supabaseService.uploadSound(file, file.name);
+      const { publicUrl, storagePath } = await supabaseService.uploadSound(file, file.name);
       const sound: SoundFile = {
-        id: Math.random().toString(36).substr(2, 9),
+        id: storagePath.split('.')[0].replace(/[^a-z0-9]/gi, '_'),
         name: file.name.split('.')[0],
-        fileName: file.name,
+        fileName: storagePath,
         url: publicUrl,
         tag: 'other',
         duration: 0
@@ -81,6 +105,16 @@ const Library: React.FC = () => {
           <p className="text-slate-500 font-medium">Synchronized Sound Database</p>
         </div>
         <div className="flex gap-3">
+          <button 
+            onClick={syncCloud}
+            disabled={isSyncing}
+            className="bg-white border border-slate-200 text-slate-600 flex items-center gap-3 px-6 py-4 rounded-[24px] shadow-sm active:scale-95 transition-all disabled:opacity-50"
+          >
+            <RefreshCw size={20} className={isSyncing ? 'animate-spin' : ''} />
+            <span className="text-sm font-black uppercase tracking-widest hidden md:inline">
+              {isSyncing ? 'Syncing...' : 'Sync Cloud'}
+            </span>
+          </button>
           <input type="file" ref={fileInputRef} className="hidden" accept="audio/*" onChange={handleFileUpload} disabled={isUploading} />
           <button 
             onClick={() => fileInputRef.current?.click()}

@@ -7,7 +7,8 @@ import Library from './components/Library';
 import Logs from './components/Logs';
 import { databaseService } from './services/databaseService';
 import { firebaseService } from './services/firebaseService';
-import { DeviceStatus, Schedule } from './types';
+import { supabaseService } from './services/supabaseService';
+import { DeviceStatus, Schedule, SoundFile } from './types';
 import { ShieldAlert, Zap } from 'lucide-react';
 
 const App: React.FC = () => {
@@ -35,6 +36,46 @@ const App: React.FC = () => {
   useEffect(() => {
     locallyUnlockedRef.current = isLocallyUnlocked;
   }, [isLocallyUnlocked]);
+
+  useEffect(() => {
+    const reconcileStorage = async () => {
+      if (!isOnline) return;
+      
+      console.log("[AgriSound] Reconciling Cloud Storage...");
+      try {
+        const cloudFiles = await supabaseService.listSounds();
+        
+        // Get current firebase sounds to avoid duplicates
+        // We'll use a one-time fetch here instead of the subscription for the reconciliation logic
+        // But since we already have a subscription in the main useEffect, we can just wait for it to populate
+        // Or better, just iterate and use saveSoundRemote which is idempotent if we derive the same ID
+        
+        for (const file of cloudFiles) {
+          // Derive a consistent ID from the filename to prevent duplicates
+          // If it's a standard AgriSound upload, it starts with timestamp-
+          const id = file.name.split('.')[0].replace(/[^a-z0-9]/gi, '_');
+          
+          const sound: SoundFile = {
+            id: id,
+            name: file.name.split('-').slice(1).join('-').split('.')[0] || file.name.split('.')[0],
+            fileName: file.name,
+            url: file.url,
+            tag: 'other',
+            duration: 0
+          };
+          
+          await firebaseService.saveSoundRemote(sound);
+        }
+        console.log("[AgriSound] Cloud Storage Reconciled.");
+      } catch (err) {
+        console.error("[AgriSound] Reconciliation failed:", err);
+      }
+    };
+
+    if (isOnline) {
+      reconcileStorage();
+    }
+  }, [isOnline]);
 
   useEffect(() => {
     const handleOnline = () => setIsOnline(true);
