@@ -46,18 +46,47 @@ const App: React.FC = () => {
     let unsubSwitch = () => {};
     let unsubPower = () => {};
     let unsubScheds = () => {};
+    let unsubSounds = () => {};
 
     const initializeSubscriptions = () => {
       unsubSwitch();
       unsubPower();
       unsubScheds();
+      unsubSounds();
 
       unsubSwitch = firebaseService.subscribeToMainSwitch(setIsMasterSwitchOn);
       unsubPower = firebaseService.subscribeToDevicePower(setIsDevicePowered);
       unsubScheds = firebaseService.subscribeToSchedules(async (remoteSchedules) => {
         await databaseService.ensureInit();
+        const localSchedules = await databaseService.getSchedules();
+        const remoteIds = remoteSchedules.map(s => s.id);
+
+        for (const local of localSchedules) {
+          if (!remoteIds.includes(local.id)) {
+            await databaseService.deleteSchedule(local.id);
+          }
+        }
+
         for (const sched of remoteSchedules) {
           await databaseService.saveSchedule(sched);
+        }
+      });
+      unsubSounds = firebaseService.subscribeToSounds(async (remoteSounds) => {
+        await databaseService.ensureInit();
+        // Get current local sounds to check for deletions
+        const localSounds = await databaseService.getSounds();
+        const remoteIds = remoteSounds.map(s => s.id);
+        
+        // Delete local sounds that are no longer in remote
+        for (const local of localSounds) {
+          if (!remoteIds.includes(local.id)) {
+            await databaseService.deleteSound(local.id);
+          }
+        }
+
+        // Save/Update remote sounds locally
+        for (const sound of remoteSounds) {
+          await databaseService.addSound(sound);
         }
       });
     };
@@ -138,6 +167,7 @@ const App: React.FC = () => {
       unsubSwitch();
       unsubPower();
       unsubScheds();
+      unsubSounds();
       clearInterval(workerInterval);
     };
   }, [isOnline]); // Depend on online status to re-init subscriptions if needed

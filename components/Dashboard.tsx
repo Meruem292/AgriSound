@@ -19,16 +19,20 @@ const Dashboard: React.FC<DashboardProps> = ({ isArmed, isDevicePowered, isUnloc
 
   useEffect(() => {
     const fetchData = async () => {
-      const [state, soundList] = await Promise.all([
-        databaseService.getDeviceState(),
-        databaseService.getSounds()
-      ]);
+      const state = await databaseService.getDeviceState();
       setDevice(state);
-      setSounds(soundList);
     };
     fetchData();
     const interval = setInterval(fetchData, 2000);
-    return () => clearInterval(interval);
+
+    const unsubSounds = firebaseService.subscribeToSounds((remoteSounds) => {
+      setSounds(remoteSounds);
+    });
+
+    return () => {
+      clearInterval(interval);
+      unsubSounds();
+    };
   }, []);
 
   const toggleMasterSwitch = async () => {

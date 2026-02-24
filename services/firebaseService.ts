@@ -1,7 +1,7 @@
 
 import { initializeApp, getApp, getApps, FirebaseApp } from 'firebase/app';
 import { getDatabase, ref, onValue, set, off, Database, remove } from 'firebase/database';
-import { Schedule } from '../types';
+import { Schedule, SoundFile } from '../types';
 
 /**
  * Robust environment variable retrieval for both local and cloud environments.
@@ -160,5 +160,31 @@ export const firebaseService = {
     const db = getDb();
     if (!db) return;
     await remove(ref(db, `schedules/${id}`));
+  },
+
+  subscribeToSounds: (callback: (sounds: SoundFile[]) => void) => {
+    const db = getDb();
+    if (!db) {
+      notifyMissingConfig('subscribe to Sounds');
+      return () => {};
+    }
+    const soundsRef = ref(db, 'sounds');
+    onValue(soundsRef, (snapshot) => {
+      const data = snapshot.val();
+      callback(data ? (Object.values(data) as SoundFile[]) : []);
+    });
+    return () => off(soundsRef);
+  },
+
+  saveSoundRemote: async (sound: SoundFile) => {
+    const db = getDb();
+    if (!db) return;
+    await set(ref(db, `sounds/${sound.id}`), sound);
+  },
+
+  deleteSoundRemote: async (id: string) => {
+    const db = getDb();
+    if (!db) return;
+    await remove(ref(db, `sounds/${id}`));
   }
 };

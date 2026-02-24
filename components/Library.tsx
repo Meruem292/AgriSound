@@ -3,6 +3,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Music, Play, Plus, Search, Trash2, Download, Cloud, AlertCircle, ExternalLink, Info, Loader2, Database } from 'lucide-react';
 import { databaseService } from '../services/databaseService';
 import { supabaseService } from '../services/supabaseService';
+import { firebaseService } from '../services/firebaseService';
 import { SoundFile } from '../types';
 
 const Library: React.FC = () => {
@@ -11,8 +12,12 @@ const Library: React.FC = () => {
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => { loadSounds(); }, []);
-  const loadSounds = async () => { setSounds(await databaseService.getSounds()); };
+  useEffect(() => {
+    const unsub = firebaseService.subscribeToSounds((remoteSounds) => {
+      setSounds(remoteSounds);
+    });
+    return () => unsub();
+  }, []);
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -29,7 +34,7 @@ const Library: React.FC = () => {
         duration: 0
       };
       await databaseService.addSound(sound);
-      await loadSounds();
+      await firebaseService.saveSoundRemote(sound);
     } catch (error: any) {
       console.error("Upload failed:", error);
       // Alerts are handled inside supabaseService for specific config errors
@@ -44,7 +49,7 @@ const Library: React.FC = () => {
       try {
         await supabaseService.deleteSound(sound.url);
         await databaseService.deleteSound(sound.id);
-        await loadSounds();
+        await firebaseService.deleteSoundRemote(sound.id);
       } catch (err) {
         console.error("Delete failed:", err);
       }

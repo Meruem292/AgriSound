@@ -12,22 +12,19 @@ const Scheduler: React.FC = () => {
   const [editingSchedule, setEditingSchedule] = useState<Partial<Schedule> | null>(null);
 
   useEffect(() => {
-    loadData();
     // Subscribe to Firebase changes specifically for this UI view
-    const unsubscribe = firebaseService.subscribeToSchedules((remoteSchedules) => {
+    const unsubScheds = firebaseService.subscribeToSchedules((remoteSchedules) => {
       setSchedules(remoteSchedules);
     });
-    return () => unsubscribe();
+    const unsubSounds = firebaseService.subscribeToSounds((remoteSounds) => {
+      setSounds(remoteSounds);
+    });
+    
+    return () => {
+      unsubScheds();
+      unsubSounds();
+    };
   }, []);
-
-  const loadData = async () => {
-    const [schedData, soundData] = await Promise.all([
-      databaseService.getSchedules(),
-      databaseService.getSounds()
-    ]);
-    setSchedules(schedData);
-    setSounds(soundData);
-  };
 
   const handleOpenModal = (schedule?: Schedule) => {
     if (schedule) {
@@ -60,7 +57,6 @@ const Scheduler: React.FC = () => {
       
       setIsModalOpen(false);
       setEditingSchedule(null);
-      await loadData();
     } else {
       alert("Please provide a name for the schedule.");
     }
@@ -74,15 +70,12 @@ const Scheduler: React.FC = () => {
     // Dual-write: Local and Firebase
     await databaseService.saveSchedule(updated);
     await firebaseService.saveScheduleRemote(updated);
-    
-    await loadData();
   };
 
   const deleteSchedule = async (id: string) => {
     if (confirm('Delete this schedule from both local and cloud?')) {
       await databaseService.deleteSchedule(id);
       await firebaseService.deleteScheduleRemote(id);
-      await loadData();
     }
   };
 
