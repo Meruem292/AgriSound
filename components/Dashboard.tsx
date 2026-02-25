@@ -29,9 +29,19 @@ const Dashboard: React.FC<DashboardProps> = ({ isArmed, isDevicePowered, isUnloc
       setSounds(remoteSounds);
     });
 
+    const unsubManual = firebaseService.subscribeToManualTriggers((trigger) => {
+      if (trigger) {
+        setActivePlaybackId(trigger.soundId);
+        // Clear the active state after a reasonable duration (e.g. 5 seconds)
+        // or we could use the actual audio duration if we had it.
+        setTimeout(() => setActivePlaybackId(null), 5000);
+      }
+    });
+
     return () => {
       clearInterval(interval);
       unsubSounds();
+      unsubManual();
     };
   }, []);
 
@@ -66,28 +76,11 @@ const Dashboard: React.FC<DashboardProps> = ({ isArmed, isDevicePowered, isUnloc
       alert("Device is Powered Off. Automatic and Manual triggers are disabled until power is restored.");
       return;
     }
-    setActivePlaybackId(sound.id);
     
-    const audio = new Audio(sound.url);
-    audio.crossOrigin = "anonymous";
-    
-    audio.onplay = () => {
-      databaseService.addLog({
-        timestamp: Date.now(),
-        soundName: sound.name,
-        triggerType: 'manual',
-        status: 'success'
-      });
-    };
-
-    audio.onended = () => setActivePlaybackId(null);
-    audio.onerror = () => setActivePlaybackId(null);
-
     try {
-      await audio.play();
+      await firebaseService.triggerManualSound(sound.id);
     } catch (e) {
       console.error("Quick trigger failed", e);
-      setActivePlaybackId(null);
     }
   };
 

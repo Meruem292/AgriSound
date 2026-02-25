@@ -186,5 +186,24 @@ export const firebaseService = {
     const db = getDb();
     if (!db) return;
     await remove(ref(db, `sounds/${id}`));
+  },
+
+  triggerManualSound: async (soundId: string) => {
+    const db = getDb();
+    if (!db) return;
+    await set(ref(db, 'system/manualTrigger'), {
+      soundId,
+      timestamp: Date.now()
+    });
+  },
+
+  subscribeToManualTriggers: (callback: (trigger: { soundId: string, timestamp: number } | null) => void) => {
+    const db = getDb();
+    if (!db) return () => {};
+    const triggerRef = ref(db, 'system/manualTrigger');
+    onValue(triggerRef, (snapshot) => {
+      callback(snapshot.val());
+    });
+    return () => off(triggerRef);
   }
 };

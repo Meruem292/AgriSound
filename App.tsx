@@ -24,6 +24,7 @@ const App: React.FC = () => {
   const masterSwitchRef = useRef(isMasterSwitchOn);
   const devicePowerRef = useRef(isDevicePowered);
   const locallyUnlockedRef = useRef(isLocallyUnlocked);
+  const lastManualTriggerRef = useRef<number>(Date.now());
 
   useEffect(() => {
     masterSwitchRef.current = isMasterSwitchOn;
@@ -88,12 +89,14 @@ const App: React.FC = () => {
     let unsubPower = () => {};
     let unsubScheds = () => {};
     let unsubSounds = () => {};
+    let unsubManual = () => {};
 
     const initializeSubscriptions = () => {
       unsubSwitch();
       unsubPower();
       unsubScheds();
       unsubSounds();
+      unsubManual();
 
       unsubSwitch = firebaseService.subscribeToMainSwitch(setIsMasterSwitchOn);
       unsubPower = firebaseService.subscribeToDevicePower(setIsDevicePowered);
@@ -128,6 +131,46 @@ const App: React.FC = () => {
         // Save/Update remote sounds locally
         for (const sound of remoteSounds) {
           await databaseService.addSound(sound);
+        }
+      });
+
+      unsubManual = firebaseService.subscribeToManualTriggers(async (trigger) => {
+        if (!trigger || !locallyUnlockedRef.current) return;
+        
+        // Avoid re-playing old triggers or the same trigger multiple times
+        if (trigger.timestamp <= lastManualTriggerRef.current) return;
+        lastManualTriggerRef.current = trigger.timestamp;
+
+        console.log(`[AgriSound] Remote Manual Trigger: ${trigger.soundId}`);
+        
+        const sounds = await databaseService.getSounds();
+        const sound = sounds.find(s => s.id === trigger.soundId);
+        
+        if (sound) {
+          const audio = new Audio(sound.url);
+          audio.crossOrigin = "anonymous";
+          audio.play().catch(e => console.error("Remote manual playback failed", e));
+          
+          // Update local state so Dashboard reflects the current call
+          await databaseService.updateDeviceState({
+            lastSoundPlayed: sound.name,
+            lastWakeTime: Date.now(),
+            status: DeviceStatus.ACTIVE
+          });
+
+          databaseService.addLog({
+            timestamp: Date.now(),
+            soundName: sound.name,
+            triggerType: 'manual',
+            status: 'success'
+          });
+
+          // Reset status after a delay (simulating playback duration)
+          setTimeout(async () => {
+            await databaseService.updateDeviceState({
+              status: DeviceStatus.SLEEPING
+            });
+          }, 5000);
         }
       });
     };
@@ -224,6 +267,7 @@ const App: React.FC = () => {
       unsubPower();
       unsubScheds();
       unsubSounds();
+      unsubManual();
       clearInterval(workerInterval);
     };
   }, [isOnline]); // Depend on online status to re-init subscriptions if needed
