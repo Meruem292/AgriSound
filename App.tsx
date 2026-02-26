@@ -17,18 +17,12 @@ const App: React.FC = () => {
   const [isLocallyUnlocked, setIsLocallyUnlocked] = useState(false);
   
   // States synced with Firebase
-  const [isMasterSwitchOn, setIsMasterSwitchOn] = useState(false);
   const [isDevicePowered, setIsDevicePowered] = useState(false);
 
   // Use refs to keep track of current state for the worker interval
-  const masterSwitchRef = useRef(isMasterSwitchOn);
   const devicePowerRef = useRef(isDevicePowered);
   const locallyUnlockedRef = useRef(isLocallyUnlocked);
   const lastManualTriggerRef = useRef<number>(Date.now());
-
-  useEffect(() => {
-    masterSwitchRef.current = isMasterSwitchOn;
-  }, [isMasterSwitchOn]);
 
   useEffect(() => {
     devicePowerRef.current = isDevicePowered;
@@ -85,20 +79,17 @@ const App: React.FC = () => {
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
 
-    let unsubSwitch = () => {};
     let unsubPower = () => {};
     let unsubScheds = () => {};
     let unsubSounds = () => {};
     let unsubManual = () => {};
 
     const initializeSubscriptions = () => {
-      unsubSwitch();
       unsubPower();
       unsubScheds();
       unsubSounds();
       unsubManual();
 
-      unsubSwitch = firebaseService.subscribeToMainSwitch(setIsMasterSwitchOn);
       unsubPower = firebaseService.subscribeToDevicePower(setIsDevicePowered);
       unsubScheds = firebaseService.subscribeToSchedules(async (remoteSchedules) => {
         await databaseService.ensureInit();
@@ -143,35 +134,8 @@ const App: React.FC = () => {
 
         console.log(`[AgriSound] Remote Manual Trigger: ${trigger.soundId}`);
         
-        const sounds = await databaseService.getSounds();
-        const sound = sounds.find(s => s.id === trigger.soundId);
-        
-        if (sound) {
-          const audio = new Audio(sound.url);
-          audio.crossOrigin = "anonymous";
-          audio.play().catch(e => console.error("Remote manual playback failed", e));
-          
-          // Update local state so Dashboard reflects the current call
-          await databaseService.updateDeviceState({
-            lastSoundPlayed: sound.name,
-            lastWakeTime: Date.now(),
-            status: DeviceStatus.ACTIVE
-          });
-
-          databaseService.addLog({
-            timestamp: Date.now(),
-            soundName: sound.name,
-            triggerType: 'manual',
-            status: 'success'
-          });
-
-          // Reset status after a delay (simulating playback duration)
-          setTimeout(async () => {
-            await databaseService.updateDeviceState({
-              status: DeviceStatus.SLEEPING
-            });
-          }, 5000);
-        }
+        // Use the unified playback logic which handles state correctly
+        databaseService.performPlayback('manual', undefined, trigger.soundId);
       });
     };
 
@@ -196,7 +160,7 @@ const App: React.FC = () => {
       const daysMap: Record<string, number> = { 'Sunday': 0, 'Monday': 1, 'Tuesday': 2, 'Wednesday': 3, 'Thursday': 4, 'Friday': 5, 'Saturday': 6 };
       const currentDay = daysMap[phDayString];
 
-      // Anticipatory Logic: Look 1 minute ahead (window check)
+      // Anticipatory Logic: Look 1 minute ahead
       let upcomingTrigger = false;
       const nowTimeInMins = now.getHours() * 60 + now.getMinutes();
 
@@ -207,8 +171,13 @@ const App: React.FC = () => {
         const sTimeInMins = sHour * 60 + sMin;
         const diff = sTimeInMins - nowTimeInMins;
 
-        // If a schedule is starting in the next 0 to 1 minutes
-        if (diff >= 0 && diff <= 1) {
+        const alreadyRan = (Date.now() - (s.lastRunTimestamp || 0)) < 61000;
+        
+        // Power ON if:
+        // 1. It's exactly 1 minute before (diff === 1)
+        // 2. It's the trigger minute (diff === 0) and it hasn't run yet
+        // 3. We are currently playing (status !== SLEEPING)
+        if (diff === 1 || (diff === 0 && !alreadyRan) || (deviceState.status !== DeviceStatus.SLEEPING)) {
           upcomingTrigger = true;
           break;
         }
@@ -216,32 +185,25 @@ const App: React.FC = () => {
 
       // Automatically turn on if a schedule is approaching
       if (upcomingTrigger) {
-        if (!masterSwitchRef.current) {
-          console.log("[AgriSound] Anticipatory: Arming Master Switch");
-          await firebaseService.setMainSwitch(true);
-        }
         if (!devicePowerRef.current) {
           console.log("[AgriSound] Anticipatory: Powering On Device");
           await firebaseService.setDevicePower(true);
         }
       } else {
-        // Automatically turn off if no schedule is approaching and last playback was > 1 min ago
-        if (masterSwitchRef.current || devicePowerRef.current) {
+        // Automatically turn off if no schedule is approaching and last playback was > 5s ago
+        if (devicePowerRef.current) {
           const lastPlaybackAge = Date.now() - deviceState.lastSyncTime;
           const isSystemIdle = deviceState.status === DeviceStatus.SLEEPING;
           
-          // Only auto-off if we are not in the middle of a minute that might have a trigger
-          // (though upcomingTrigger should handle diff=0)
-          if (isSystemIdle && lastPlaybackAge > 60000) {
-            console.log("[AgriSound] Auto-Shutdown: Disarming and Powering Off");
-            await firebaseService.setMainSwitch(false);
+          if (isSystemIdle && lastPlaybackAge > 5000) {
+            console.log("[AgriSound] Auto-Shutdown: Powering Off");
             await firebaseService.setDevicePower(false);
           }
         }
       }
 
       // Playback Execution
-      if (locallyUnlockedRef.current && masterSwitchRef.current && devicePowerRef.current) {
+      if (locallyUnlockedRef.current && devicePowerRef.current) {
         for (const schedule of schedules) {
           if (!schedule.isActive || !schedule.days.includes(currentDay)) continue;
           
@@ -254,16 +216,16 @@ const App: React.FC = () => {
             await firebaseService.saveScheduleRemote(updated);
             
             console.log(`[AgriSound] Executing scheduled trigger: ${schedule.name}`);
+            // We don't await here to allow the worker to continue its loops
             databaseService.performPlayback('scheduled', schedule.id);
           }
         }
       }
-    }, 10000); 
+    }, 5000); 
     
     return () => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
-      unsubSwitch();
       unsubPower();
       unsubScheds();
       unsubSounds();
@@ -285,11 +247,11 @@ const App: React.FC = () => {
 
   const renderContent = () => {
     switch (activeTab) {
-      case 'dashboard': return <Dashboard isArmed={isMasterSwitchOn} isDevicePowered={isDevicePowered} isUnlocked={isLocallyUnlocked} />;
+      case 'dashboard': return <Dashboard isDevicePowered={isDevicePowered} isUnlocked={isLocallyUnlocked} />;
       case 'scheduler': return <Scheduler />;
       case 'library': return <Library />;
       case 'logs': return <Logs />;
-      default: return <Dashboard isArmed={isMasterSwitchOn} isDevicePowered={isDevicePowered} isUnlocked={isLocallyUnlocked} />;
+      default: return <Dashboard isDevicePowered={isDevicePowered} isUnlocked={isLocallyUnlocked} />;
     }
   };
 
