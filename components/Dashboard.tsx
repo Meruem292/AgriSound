@@ -161,7 +161,7 @@ const Dashboard: React.FC<DashboardProps> = ({ isDevicePowered, isUnlocked }) =>
         <div className="space-y-1">
           <h4 className="text-[11px] font-black uppercase tracking-widest text-amber-900">Proactive Power Management</h4>
           <p className="text-[10px] text-amber-800 font-bold uppercase tracking-wider leading-relaxed opacity-80">
-            System automatically Powers On 1 minute before scheduled field events to ensure peak readiness.
+            System automatically Powers On 1 minute before scheduled events and Powers Off 5 seconds after playback ends.
           </p>
         </div>
       </div>

@@ -159,7 +159,8 @@ const App: React.FC = () => {
           // Reset status after a delay (simulating playback duration)
           setTimeout(async () => {
             await databaseService.updateDeviceState({
-              status: DeviceStatus.SLEEPING
+              status: DeviceStatus.SLEEPING,
+              lastSyncTime: Date.now()
             });
           }, 5000);
         }
@@ -187,7 +188,7 @@ const App: React.FC = () => {
       const daysMap: Record<string, number> = { 'Sunday': 0, 'Monday': 1, 'Tuesday': 2, 'Wednesday': 3, 'Thursday': 4, 'Friday': 5, 'Saturday': 6 };
       const currentDay = daysMap[phDayString];
 
-      // Anticipatory Logic: Look 1 minute ahead (window check)
+      // Anticipatory Logic: Look 1 minute ahead
       let upcomingTrigger = false;
       const nowTimeInMins = now.getHours() * 60 + now.getMinutes();
 
@@ -198,8 +199,13 @@ const App: React.FC = () => {
         const sTimeInMins = sHour * 60 + sMin;
         const diff = sTimeInMins - nowTimeInMins;
 
-        // If a schedule is starting in the next 0 to 1 minutes
-        if (diff >= 0 && diff <= 1) {
+        const alreadyRan = (Date.now() - (s.lastRunTimestamp || 0)) < 61000;
+        
+        // Power ON if:
+        // 1. It's exactly 1 minute before (diff === 1)
+        // 2. It's the trigger minute (diff === 0) and it hasn't run yet
+        // 3. It's the trigger minute (diff === 0) and it IS currently playing
+        if (diff === 1 || (diff === 0 && !alreadyRan) || (diff === 0 && deviceState.status !== DeviceStatus.SLEEPING)) {
           upcomingTrigger = true;
           break;
         }
@@ -212,14 +218,12 @@ const App: React.FC = () => {
           await firebaseService.setDevicePower(true);
         }
       } else {
-        // Automatically turn off if no schedule is approaching and last playback was > 1 min ago
+        // Automatically turn off if no schedule is approaching and last playback was > 5s ago
         if (devicePowerRef.current) {
           const lastPlaybackAge = Date.now() - deviceState.lastSyncTime;
           const isSystemIdle = deviceState.status === DeviceStatus.SLEEPING;
           
-          // Only auto-off if we are not in the middle of a minute that might have a trigger
-          // (though upcomingTrigger should handle diff=0)
-          if (isSystemIdle && lastPlaybackAge > 60000) {
+          if (isSystemIdle && lastPlaybackAge > 5000) {
             console.log("[AgriSound] Auto-Shutdown: Powering Off");
             await firebaseService.setDevicePower(false);
           }
@@ -244,7 +248,7 @@ const App: React.FC = () => {
           }
         }
       }
-    }, 10000); 
+    }, 5000); 
     
     return () => {
       window.removeEventListener('online', handleOnline);
