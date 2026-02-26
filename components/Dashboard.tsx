@@ -6,11 +6,12 @@ import { firebaseService } from '../services/firebaseService';
 import { DeviceState, DeviceStatus, SoundFile } from '../types';
 
 interface DashboardProps {
+  isArmed: boolean;
   isDevicePowered: boolean;
   isUnlocked: boolean;
 }
 
-const Dashboard: React.FC<DashboardProps> = ({ isDevicePowered, isUnlocked }) => {
+const Dashboard: React.FC<DashboardProps> = ({ isArmed, isDevicePowered, isUnlocked }) => {
   const [device, setDevice] = useState<DeviceState | null>(null);
   const [sounds, setSounds] = useState<SoundFile[]>([]);
   const [isUpdatingCloud, setIsUpdatingCloud] = useState(false);
@@ -43,6 +44,17 @@ const Dashboard: React.FC<DashboardProps> = ({ isDevicePowered, isUnlocked }) =>
       unsubManual();
     };
   }, []);
+
+  const toggleMasterSwitch = async () => {
+    setIsUpdatingCloud(true);
+    try {
+      await firebaseService.setMainSwitch(!isArmed);
+    } catch (err) {
+      console.error("Toggle Master Switch failed:", err);
+    } finally {
+      setIsUpdatingCloud(false);
+    }
+  };
 
   const toggleDevicePower = async () => {
     setIsUpdatingCloud(true);
@@ -103,14 +115,14 @@ const Dashboard: React.FC<DashboardProps> = ({ isDevicePowered, isUnlocked }) =>
             <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">{sounds.length} Synced Files</span>
           </div>
           <div className="flex items-center gap-2 px-4 py-2 bg-white rounded-2xl shadow-sm border border-slate-100">
-            <Cloud size={14} className={isDevicePowered ? 'text-blue-500' : 'text-slate-300'} />
+            <Cloud size={14} className={isArmed ? 'text-blue-500' : 'text-slate-300'} />
             <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Live Sync</span>
           </div>
         </div>
       </div>
 
       {/* Main Control Panel */}
-      <div className="grid grid-cols-1 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* Device Power Button */}
         <div 
           onClick={toggleDevicePower}
@@ -136,10 +148,38 @@ const Dashboard: React.FC<DashboardProps> = ({ isDevicePowered, isUnlocked }) =>
             </p>
           </div>
         </div>
+
+        {/* Master Arming Switch */}
+        <div 
+          onClick={toggleMasterSwitch}
+          className={`group p-8 rounded-[48px] border-2 flex flex-col justify-between transition-all duration-500 cursor-pointer select-none active:scale-[0.96] h-full ${
+            isArmed 
+            ? 'bg-green-600 border-green-500 text-white shadow-2xl shadow-green-200' 
+            : 'bg-slate-900 border-slate-800 text-white shadow-2xl shadow-slate-200'
+          }`}
+        >
+          <div className="flex justify-between items-start mb-12">
+            <div className={`p-5 rounded-3xl backdrop-blur-md transition-all ${isArmed ? 'bg-white/20' : 'bg-slate-800'}`}>
+              <ShieldCheck size={36} className="animate-pulse" />
+            </div>
+            <div className={`w-18 h-10 rounded-full relative border-2 p-1 transition-all ${isArmed ? 'bg-white border-white' : 'bg-slate-800 border-slate-700'}`}>
+              <div className={`w-7 h-7 rounded-full transition-all duration-300 shadow-sm ${isArmed ? 'translate-x-8 bg-green-600' : 'translate-x-0 bg-slate-500'}`} />
+            </div>
+          </div>
+          <div>
+            <h3 className="font-black text-xs uppercase tracking-[0.25em] opacity-70 mb-2">Automated Field Defense</h3>
+            <p className="text-4xl font-black tracking-tighter leading-none">
+              {isArmed ? 'SYSTEM ARMED' : 'SYSTEM DISARMED'}
+            </p>
+            <p className="text-[10px] font-bold opacity-60 mt-4 leading-relaxed">
+              {isArmed ? 'Armed for cloud schedules.' : 'Manual override active. Schedules paused.'}
+            </p>
+          </div>
+        </div>
       </div>
 
       {/* Error Warning if Cloud is disconnected */}
-      {!isDevicePowered && isUpdatingCloud && (
+      {!isArmed && !isDevicePowered && isUpdatingCloud && (
         <div className="bg-red-50 border-2 border-red-100 rounded-[32px] p-6 flex items-center gap-5 shadow-sm animate-pulse">
           <div className="w-14 h-14 bg-red-100 text-red-600 rounded-[20px] flex items-center justify-center shrink-0">
             <WifiOff size={24} />

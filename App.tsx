@@ -17,12 +17,18 @@ const App: React.FC = () => {
   const [isLocallyUnlocked, setIsLocallyUnlocked] = useState(false);
   
   // States synced with Firebase
+  const [isMasterSwitchOn, setIsMasterSwitchOn] = useState(false);
   const [isDevicePowered, setIsDevicePowered] = useState(false);
 
   // Use refs to keep track of current state for the worker interval
+  const masterSwitchRef = useRef(isMasterSwitchOn);
   const devicePowerRef = useRef(isDevicePowered);
   const locallyUnlockedRef = useRef(isLocallyUnlocked);
   const lastManualTriggerRef = useRef<number>(Date.now());
+
+  useEffect(() => {
+    masterSwitchRef.current = isMasterSwitchOn;
+  }, [isMasterSwitchOn]);
 
   useEffect(() => {
     devicePowerRef.current = isDevicePowered;
@@ -79,17 +85,20 @@ const App: React.FC = () => {
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
 
+    let unsubSwitch = () => {};
     let unsubPower = () => {};
     let unsubScheds = () => {};
     let unsubSounds = () => {};
     let unsubManual = () => {};
 
     const initializeSubscriptions = () => {
+      unsubSwitch();
       unsubPower();
       unsubScheds();
       unsubSounds();
       unsubManual();
 
+      unsubSwitch = firebaseService.subscribeToMainSwitch(setIsMasterSwitchOn);
       unsubPower = firebaseService.subscribeToDevicePower(setIsDevicePowered);
       unsubScheds = firebaseService.subscribeToSchedules(async (remoteSchedules) => {
         await databaseService.ensureInit();
@@ -175,35 +184,36 @@ const App: React.FC = () => {
         
         // Power ON if:
         // 1. It's exactly 1 minute before (diff === 1)
-        // 2. It's the trigger minute (diff === 0) and it hasn't run yet
+        // 2. It's the trigger minute (diff === 0)
         // 3. We are currently playing (status !== SLEEPING)
-        if (diff === 1 || (diff === 0 && !alreadyRan) || (deviceState.status !== DeviceStatus.SLEEPING)) {
+        if (diff === 1 || diff === 0 || (deviceState.status !== DeviceStatus.SLEEPING)) {
           upcomingTrigger = true;
           break;
         }
       }
 
-      // Automatically turn on if a schedule is approaching
-      if (upcomingTrigger) {
+      // Automatically turn on if a schedule is approaching AND system is ARMED
+      if (upcomingTrigger && masterSwitchRef.current) {
         if (!devicePowerRef.current) {
           console.log("[AgriSound] Anticipatory: Powering On Device");
           await firebaseService.setDevicePower(true);
         }
       } else {
         // Automatically turn off if no schedule is approaching and last playback was > 5s ago
+        // We NEVER automatically turn off the Master Switch (Main Switch)
         if (devicePowerRef.current) {
           const lastPlaybackAge = Date.now() - deviceState.lastSyncTime;
           const isSystemIdle = deviceState.status === DeviceStatus.SLEEPING;
           
           if (isSystemIdle && lastPlaybackAge > 5000) {
-            console.log("[AgriSound] Auto-Shutdown: Powering Off");
+            console.log("[AgriSound] Auto-Shutdown: Powering Off Hardware");
             await firebaseService.setDevicePower(false);
           }
         }
       }
 
       // Playback Execution
-      if (locallyUnlockedRef.current && devicePowerRef.current) {
+      if (locallyUnlockedRef.current && masterSwitchRef.current && devicePowerRef.current) {
         for (const schedule of schedules) {
           if (!schedule.isActive || !schedule.days.includes(currentDay)) continue;
           
@@ -226,6 +236,7 @@ const App: React.FC = () => {
     return () => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
+      unsubSwitch();
       unsubPower();
       unsubScheds();
       unsubSounds();
@@ -247,11 +258,11 @@ const App: React.FC = () => {
 
   const renderContent = () => {
     switch (activeTab) {
-      case 'dashboard': return <Dashboard isDevicePowered={isDevicePowered} isUnlocked={isLocallyUnlocked} />;
+      case 'dashboard': return <Dashboard isArmed={isMasterSwitchOn} isDevicePowered={isDevicePowered} isUnlocked={isLocallyUnlocked} />;
       case 'scheduler': return <Scheduler />;
       case 'library': return <Library />;
       case 'logs': return <Logs />;
-      default: return <Dashboard isDevicePowered={isDevicePowered} isUnlocked={isLocallyUnlocked} />;
+      default: return <Dashboard isArmed={isMasterSwitchOn} isDevicePowered={isDevicePowered} isUnlocked={isLocallyUnlocked} />;
     }
   };
 
