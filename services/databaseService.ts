@@ -2,7 +2,7 @@
 import { DeviceState, DeviceStatus, Schedule, SoundFile, PlaybackLog, ScheduleType } from '../types';
 
 const DB_NAME = 'AgriSoundDB';
-const DB_VERSION = 5; // Bumped to 5 to ensure keyPath: 'id' on all stores
+const DB_VERSION = 4; // Bumped to 4 for Supabase URL migration
 const STORES = {
   SOUNDS: 'sounds',
   SCHEDULES: 'schedules',
@@ -19,27 +19,15 @@ class LocalDB {
       request.onupgradeneeded = (event: IDBVersionChangeEvent) => {
         const db = request.result;
         
-        const storeConfigs = [
-          { name: STORES.SOUNDS, keyPath: 'id' },
-          { name: STORES.SCHEDULES, keyPath: 'id' },
-          { name: STORES.LOGS, keyPath: 'id' },
-          { name: STORES.STATE, keyPath: 'id' }
-        ];
+        // Handle migration if needed
+        if (event.oldVersion < 4) {
+          // You could add logic here to clean up old blobs if space is tight
+        }
 
-        storeConfigs.forEach(config => {
-          if (db.objectStoreNames.contains(config.name)) {
-            // Check if existing store has the correct keyPath
-            // Note: We can't easily check keyPath of an existing store here without a transaction,
-            // but we can just delete and recreate to be absolutely sure if we are upgrading.
-            // Since this is a cache, it's safe to clear.
-            if (event.oldVersion > 0 && event.oldVersion < 5) {
-              db.deleteObjectStore(config.name);
-              db.createObjectStore(config.name, { keyPath: config.keyPath });
-            }
-          } else {
-            db.createObjectStore(config.name, { keyPath: config.keyPath });
-          }
-        });
+        if (!db.objectStoreNames.contains(STORES.SOUNDS)) db.createObjectStore(STORES.SOUNDS, { keyPath: 'id' });
+        if (!db.objectStoreNames.contains(STORES.SCHEDULES)) db.createObjectStore(STORES.SCHEDULES, { keyPath: 'id' });
+        if (!db.objectStoreNames.contains(STORES.LOGS)) db.createObjectStore(STORES.LOGS, { keyPath: 'id' });
+        if (!db.objectStoreNames.contains(STORES.STATE)) db.createObjectStore(STORES.STATE, { keyPath: 'id' });
       };
       request.onsuccess = () => {
         this.db = request.result;
@@ -71,22 +59,8 @@ class LocalDB {
     return new Promise((resolve, reject) => {
       const transaction = this.db!.transaction(storeName, 'readwrite');
       const store = transaction.objectStore(storeName);
-      
-      // Ensure item has an ID
       if (storeName === STORES.STATE && !item.id) item.id = 'main';
-      if (!item.id) {
-        if (storeName === STORES.LOGS) item.id = Math.random().toString(36).substr(2, 9);
-        else item.id = Math.random().toString(36).substr(2, 9);
-      }
-
-      let request;
-      // Robust check for out-of-line keys (Raspberry Pi / Chromium strictness)
-      if (store.keyPath === null) {
-        request = store.put(item, item.id);
-      } else {
-        request = store.put(item);
-      }
-      
+      const request = store.put(item);
       request.onerror = () => reject(request.error);
       transaction.oncomplete = () => resolve();
     });
@@ -175,7 +149,7 @@ export const databaseService = {
     await localDB.put(STORES.LOGS, newLog);
   },
 
-  performPlayback: async (triggerType: 'manual' | 'scheduled', scheduleId?: string, specificSoundId?: string) => {
+  performPlayback: async (triggerType: 'manual' | 'scheduled', scheduleId?: string) => {
     await databaseService.ensureInit();
     
     const allSounds = await databaseService.getSounds();
@@ -187,10 +161,7 @@ export const databaseService = {
     let targetSounds: SoundFile[] = allSounds;
     let cycles = 1;
 
-    if (specificSoundId) {
-      const sound = allSounds.find(s => s.id === specificSoundId);
-      if (sound) targetSounds = [sound];
-    } else if (scheduleId) {
+    if (scheduleId) {
       const schedules = await databaseService.getSchedules();
       const sched = schedules.find(s => s.id === scheduleId);
       if (sched) {
@@ -203,7 +174,7 @@ export const databaseService = {
     }
 
     await databaseService.updateDeviceState({ status: DeviceStatus.WAKING });
-    await new Promise(r => setTimeout(r, 6000));
+    await new Promise(r => setTimeout(r, 1000));
     await databaseService.updateDeviceState({ status: DeviceStatus.ACTIVE });
 
     for (let i = 0; i < cycles; i++) {
