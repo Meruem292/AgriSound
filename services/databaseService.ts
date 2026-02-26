@@ -203,7 +203,7 @@ export const databaseService = {
     }
 
     await databaseService.updateDeviceState({ status: DeviceStatus.WAKING });
-    await new Promise(r => setTimeout(r, 1000));
+    await new Promise(r => setTimeout(r, 6000));
     await databaseService.updateDeviceState({ status: DeviceStatus.ACTIVE });
 
     for (let i = 0; i < cycles; i++) {
