@@ -134,36 +134,8 @@ const App: React.FC = () => {
 
         console.log(`[AgriSound] Remote Manual Trigger: ${trigger.soundId}`);
         
-        const sounds = await databaseService.getSounds();
-        const sound = sounds.find(s => s.id === trigger.soundId);
-        
-        if (sound) {
-          const audio = new Audio(sound.url);
-          audio.crossOrigin = "anonymous";
-          audio.play().catch(e => console.error("Remote manual playback failed", e));
-          
-          // Update local state so Dashboard reflects the current call
-          await databaseService.updateDeviceState({
-            lastSoundPlayed: sound.name,
-            lastWakeTime: Date.now(),
-            status: DeviceStatus.ACTIVE
-          });
-
-          databaseService.addLog({
-            timestamp: Date.now(),
-            soundName: sound.name,
-            triggerType: 'manual',
-            status: 'success'
-          });
-
-          // Reset status after a delay (simulating playback duration)
-          setTimeout(async () => {
-            await databaseService.updateDeviceState({
-              status: DeviceStatus.SLEEPING,
-              lastSyncTime: Date.now()
-            });
-          }, 5000);
-        }
+        // Use the unified playback logic which handles state correctly
+        databaseService.performPlayback('manual', undefined, trigger.soundId);
       });
     };
 
@@ -204,8 +176,8 @@ const App: React.FC = () => {
         // Power ON if:
         // 1. It's exactly 1 minute before (diff === 1)
         // 2. It's the trigger minute (diff === 0) and it hasn't run yet
-        // 3. It's the trigger minute (diff === 0) and it IS currently playing
-        if (diff === 1 || (diff === 0 && !alreadyRan) || (diff === 0 && deviceState.status !== DeviceStatus.SLEEPING)) {
+        // 3. We are currently playing (status !== SLEEPING)
+        if (diff === 1 || (diff === 0 && !alreadyRan) || (deviceState.status !== DeviceStatus.SLEEPING)) {
           upcomingTrigger = true;
           break;
         }
@@ -244,6 +216,7 @@ const App: React.FC = () => {
             await firebaseService.saveScheduleRemote(updated);
             
             console.log(`[AgriSound] Executing scheduled trigger: ${schedule.name}`);
+            // We don't await here to allow the worker to continue its loops
             databaseService.performPlayback('scheduled', schedule.id);
           }
         }

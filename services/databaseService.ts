@@ -175,7 +175,7 @@ export const databaseService = {
     await localDB.put(STORES.LOGS, newLog);
   },
 
-  performPlayback: async (triggerType: 'manual' | 'scheduled', scheduleId?: string) => {
+  performPlayback: async (triggerType: 'manual' | 'scheduled', scheduleId?: string, specificSoundId?: string) => {
     await databaseService.ensureInit();
     
     const allSounds = await databaseService.getSounds();
@@ -187,7 +187,10 @@ export const databaseService = {
     let targetSounds: SoundFile[] = allSounds;
     let cycles = 1;
 
-    if (scheduleId) {
+    if (specificSoundId) {
+      const sound = allSounds.find(s => s.id === specificSoundId);
+      if (sound) targetSounds = [sound];
+    } else if (scheduleId) {
       const schedules = await databaseService.getSchedules();
       const sched = schedules.find(s => s.id === scheduleId);
       if (sched) {
