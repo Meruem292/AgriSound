@@ -15,6 +15,8 @@ const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [isLocallyUnlocked, setIsLocallyUnlocked] = useState(false);
+  const [clientId] = useState(() => Math.random().toString(36).substring(2, 15));
+  const [isLeader, setIsLeader] = useState(false);
   
   // States synced with Firebase
   const [isDevicePowered, setIsDevicePowered] = useState(false);
@@ -83,12 +85,14 @@ const App: React.FC = () => {
     let unsubScheds = () => {};
     let unsubSounds = () => {};
     let unsubManual = () => {};
+    let unsubScheduledTriggers = () => {};
 
     const initializeSubscriptions = () => {
       unsubPower();
       unsubScheds();
       unsubSounds();
       unsubManual();
+      unsubScheduledTriggers();
 
       unsubPower = firebaseService.subscribeToDevicePower(setIsDevicePowered);
       unsubScheds = firebaseService.subscribeToSchedules(async (remoteSchedules) => {
@@ -137,6 +141,20 @@ const App: React.FC = () => {
         // Use the unified playback logic which handles state correctly
         databaseService.performPlayback('manual', undefined, trigger.soundId);
       });
+
+      unsubScheduledTriggers = firebaseService.subscribeToScheduledTriggers(async (trigger) => {
+        if (!trigger || !locallyUnlockedRef.current) return;
+
+        // Use a ref to avoid re-playing the same scheduled trigger
+        const lastTriggerTime = (window as any)._lastScheduledTriggerTime || 0;
+        if (trigger.timestamp <= lastTriggerTime) return;
+        (window as any)._lastScheduledTriggerTime = trigger.timestamp;
+
+        console.log(`[AgriSound] Remote Scheduled Trigger: ${trigger.soundId} for schedule ${trigger.scheduleId}`);
+        
+        // Play audio locally
+        databaseService.performPlayback('scheduled', trigger.scheduleId, trigger.soundId);
+      });
     };
 
     if (isOnline) {
@@ -145,6 +163,16 @@ const App: React.FC = () => {
 
     // Main background worker for automated triggers and anticipatory power
     const workerInterval = setInterval(async () => {
+      if (!isOnline) return;
+
+      // Leader Election: Only one client should manage automation
+      const amLeader = await firebaseService.tryBecomeLeader(clientId);
+      setIsLeader(amLeader);
+      
+      if (!amLeader) {
+        return;
+      }
+
       await databaseService.ensureInit();
       const schedules = await databaseService.getSchedules();
       const deviceState = await databaseService.getDeviceState();
@@ -190,7 +218,7 @@ const App: React.FC = () => {
       // Automatically turn on if a schedule is approaching
       if (upcomingTrigger) {
         if (!devicePowerRef.current) {
-          console.log("[AgriSound] Anticipatory: Powering On Device");
+          console.log("[AgriSound] Leader: Powering On Device");
           await firebaseService.setDevicePower(true);
         }
       } else {
@@ -200,28 +228,30 @@ const App: React.FC = () => {
           const isSystemIdle = deviceState.status === DeviceStatus.SLEEPING;
           
           if (isSystemIdle && lastPlaybackAge > 5000) {
-            console.log("[AgriSound] Auto-Shutdown: Powering Off Hardware");
+            console.log("[AgriSound] Leader: Powering Off Hardware");
             await firebaseService.setDevicePower(false);
           }
         }
       }
 
-      // Playback Execution
-      if (locallyUnlockedRef.current && devicePowerRef.current) {
-        for (const schedule of schedules) {
-          if (!schedule.isActive || !schedule.days.includes(currentDay)) continue;
-          
-          const timeMatch = schedule.time === currentHHmm;
-          const alreadyRan = (Date.now() - (schedule.lastRunTimestamp || 0)) < 61000;
+      // Playback Execution (Broadcast to all clients)
+      for (const schedule of schedules) {
+        if (!schedule.isActive || !schedule.days.includes(currentDay)) continue;
+        
+        const timeMatch = schedule.time === currentHHmm;
+        const alreadyRan = (Date.now() - (schedule.lastRunTimestamp || 0)) < 61000;
 
-          if (timeMatch && !alreadyRan) {
-            const updated = { ...schedule, lastRunTimestamp: Date.now() };
-            await databaseService.saveSchedule(updated);
-            await firebaseService.saveScheduleRemote(updated);
-            
-            console.log(`[AgriSound] Executing scheduled trigger: ${schedule.name}`);
-            // We don't await here to allow the worker to continue its loops
-            databaseService.performPlayback('scheduled', schedule.id);
+        if (timeMatch && !alreadyRan) {
+          const updated = { ...schedule, lastRunTimestamp: Date.now() };
+          await databaseService.saveSchedule(updated);
+          await firebaseService.saveScheduleRemote(updated);
+          
+          console.log(`[AgriSound] Leader: Broadcasting scheduled trigger: ${schedule.name}`);
+          
+          // Pick a sound and broadcast it
+          const soundId = await databaseService.pickSoundForSchedule(schedule.id);
+          if (soundId) {
+            await firebaseService.triggerScheduledSound(soundId, schedule.id);
           }
         }
       }
@@ -234,6 +264,7 @@ const App: React.FC = () => {
       unsubScheds();
       unsubSounds();
       unsubManual();
+      unsubScheduledTriggers();
       clearInterval(workerInterval);
     };
   }, [isOnline]); // Depend on online status to re-init subscriptions if needed
@@ -251,11 +282,11 @@ const App: React.FC = () => {
 
   const renderContent = () => {
     switch (activeTab) {
-      case 'dashboard': return <Dashboard isDevicePowered={isDevicePowered} isUnlocked={isLocallyUnlocked} />;
+      case 'dashboard': return <Dashboard isDevicePowered={isDevicePowered} isUnlocked={isLocallyUnlocked} isLeader={isLeader} />;
       case 'scheduler': return <Scheduler />;
       case 'library': return <Library />;
       case 'logs': return <Logs />;
-      default: return <Dashboard isDevicePowered={isDevicePowered} isUnlocked={isLocallyUnlocked} />;
+      default: return <Dashboard isDevicePowered={isDevicePowered} isUnlocked={isLocallyUnlocked} isLeader={isLeader} />;
     }
   };
 

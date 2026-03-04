@@ -205,5 +205,53 @@ export const firebaseService = {
       callback(snapshot.val());
     });
     return () => off(triggerRef);
+  },
+
+  triggerScheduledSound: async (soundId: string, scheduleId: string) => {
+    const db = getDb();
+    if (!db) return;
+    await set(ref(db, 'system/scheduledTrigger'), {
+      soundId,
+      scheduleId,
+      timestamp: Date.now()
+    });
+  },
+
+  subscribeToScheduledTriggers: (callback: (trigger: { soundId: string, scheduleId: string, timestamp: number } | null) => void) => {
+    const db = getDb();
+    if (!db) return () => {};
+    const triggerRef = ref(db, 'system/scheduledTrigger');
+    onValue(triggerRef, (snapshot) => {
+      callback(snapshot.val());
+    });
+    return () => off(triggerRef);
+  },
+
+  tryBecomeLeader: async (clientId: string): Promise<boolean> => {
+    const db = getDb();
+    if (!db) return false;
+    
+    const leaderRef = ref(db, 'system/automationLeader');
+    return new Promise((resolve) => {
+      onValue(leaderRef, async (snapshot) => {
+        const current = snapshot.val();
+        const now = Date.now();
+        
+        // If no leader or leader is stale (15s), try to take over
+        if (!current || current.clientId === clientId || (now - current.heartbeat) > 15000) {
+          try {
+            await set(leaderRef, {
+              clientId,
+              heartbeat: now
+            });
+            resolve(true);
+          } catch (e) {
+            resolve(false);
+          }
+        } else {
+          resolve(false);
+        }
+      }, { onlyOnce: true });
+    });
   }
 };

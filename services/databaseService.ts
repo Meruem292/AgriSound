@@ -247,5 +247,24 @@ export const databaseService = {
 
   triggerManualPlay: async () => {
     await databaseService.performPlayback('manual');
+  },
+
+  pickSoundForSchedule: async (scheduleId: string): Promise<string | null> => {
+    await databaseService.ensureInit();
+    const allSounds = await databaseService.getSounds();
+    if (allSounds.length === 0) return null;
+
+    const schedules = await databaseService.getSchedules();
+    const sched = schedules.find(s => s.id === scheduleId);
+    if (!sched) return null;
+
+    let targetSounds = allSounds;
+    if (Array.isArray(sched.soundIds) && sched.soundIds.length > 0) {
+      const filtered = allSounds.filter(s => (sched.soundIds as string[]).includes(s.id));
+      if (filtered.length > 0) targetSounds = filtered;
+    }
+
+    const sound = targetSounds[Math.floor(Math.random() * targetSounds.length)];
+    return sound.id;
   }
 };

@@ -8,9 +8,10 @@ import { DeviceState, DeviceStatus, SoundFile } from '../types';
 interface DashboardProps {
   isDevicePowered: boolean;
   isUnlocked: boolean;
+  isLeader: boolean;
 }
 
-const Dashboard: React.FC<DashboardProps> = ({ isDevicePowered, isUnlocked }) => {
+const Dashboard: React.FC<DashboardProps> = ({ isDevicePowered, isUnlocked, isLeader }) => {
   const [device, setDevice] = useState<DeviceState | null>(null);
   const [sounds, setSounds] = useState<SoundFile[]>([]);
   const [isUpdatingCloud, setIsUpdatingCloud] = useState(false);
@@ -106,6 +107,12 @@ const Dashboard: React.FC<DashboardProps> = ({ isDevicePowered, isUnlocked }) =>
             <Cloud size={14} className={isDevicePowered ? 'text-blue-500' : 'text-slate-300'} />
             <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Live Sync</span>
           </div>
+          {isLeader && (
+            <div className="flex items-center gap-2 px-4 py-2 bg-amber-50 rounded-2xl shadow-sm border border-amber-100">
+              <Zap size={14} className="text-amber-500" />
+              <span className="text-[10px] font-black uppercase tracking-widest text-amber-600">Automation Leader</span>
+            </div>
+          )}
         </div>
       </div>
 
