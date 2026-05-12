@@ -1,9 +1,9 @@
 
 import React, { useState, useEffect } from 'react';
-import { Activity, Clock, ShieldAlert, ShieldCheck, Cloud, RefreshCw, Play, Music, Database, Power, Zap, WifiOff } from 'lucide-react';
+import { Activity, Clock, ShieldAlert, ShieldCheck, Cloud, RefreshCw, Play, Music, Database, Power, Zap, WifiOff, Bird, Settings, CheckCircle2, Copy, CheckCheck, Terminal } from 'lucide-react';
 import { databaseService } from '../services/databaseService';
 import { firebaseService } from '../services/firebaseService';
-import { DeviceState, DeviceStatus, SoundFile } from '../types';
+import { DeviceState, DeviceStatus, SoundFile, SystemSettings } from '../types';
 
 interface DashboardProps {
   isDevicePowered: boolean;
@@ -16,6 +16,8 @@ const Dashboard: React.FC<DashboardProps> = ({ isDevicePowered, isUnlocked, isLe
   const [sounds, setSounds] = useState<SoundFile[]>([]);
   const [isUpdatingCloud, setIsUpdatingCloud] = useState(false);
   const [activePlaybackId, setActivePlaybackId] = useState<string | null>(null);
+  const [settings, setSettings] = useState<SystemSettings>({ detectionSoundId: '', isDetectionEnabled: false });
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -29,11 +31,13 @@ const Dashboard: React.FC<DashboardProps> = ({ isDevicePowered, isUnlocked, isLe
       setSounds(remoteSounds);
     });
 
+    const unsubSettings = firebaseService.subscribeToSystemSettings((remoteSettings) => {
+      setSettings(remoteSettings);
+    });
+
     const unsubManual = firebaseService.subscribeToManualTriggers((trigger) => {
       if (trigger) {
         setActivePlaybackId(trigger.soundId);
-        // Clear the active state after a reasonable duration (e.g. 5 seconds)
-        // or we could use the actual audio duration if we had it.
         setTimeout(() => setActivePlaybackId(null), 5000);
       }
     });
@@ -41,9 +45,18 @@ const Dashboard: React.FC<DashboardProps> = ({ isDevicePowered, isUnlocked, isLe
     return () => {
       clearInterval(interval);
       unsubSounds();
+      unsubSettings();
       unsubManual();
     };
   }, []);
+
+  const copyToClipboard = () => {
+    const url = "https://agri-sound.vercel.app/api/detect";
+    navigator.clipboard.writeText(url).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  };
 
   const toggleDevicePower = async () => {
     setIsUpdatingCloud(true);
@@ -51,6 +64,24 @@ const Dashboard: React.FC<DashboardProps> = ({ isDevicePowered, isUnlocked, isLe
       await firebaseService.setDevicePower(!isDevicePowered);
     } catch (err) {
       console.error("Toggle Device Power failed:", err);
+    } finally {
+      setIsUpdatingCloud(false);
+    }
+  };
+
+  const updateDetectionSound = async (soundId: string) => {
+    setIsUpdatingCloud(true);
+    try {
+      await firebaseService.updateSystemSettings({ detectionSoundId: soundId });
+    } finally {
+      setIsUpdatingCloud(false);
+    }
+  };
+
+  const toggleDetection = async () => {
+    setIsUpdatingCloud(true);
+    try {
+      await firebaseService.updateSystemSettings({ isDetectionEnabled: !settings.isDetectionEnabled });
     } finally {
       setIsUpdatingCloud(false);
     }
@@ -172,6 +203,102 @@ const Dashboard: React.FC<DashboardProps> = ({ isDevicePowered, isUnlocked, isLe
           </p>
         </div>
       </div>
+
+      {/* Bird Detection Settings */}
+      <section className="bg-white rounded-[48px] p-10 shadow-sm border border-slate-100">
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-8">
+          <div className="space-y-4">
+            <h2 className="text-slate-400 font-bold text-[10px] uppercase tracking-[0.3em] mb-4">AI Vision Config</h2>
+            <div className="flex items-center gap-6">
+              <div 
+                onClick={toggleDetection}
+                className={`w-20 h-10 rounded-full relative cursor-pointer transition-all duration-300 p-1 border-2 ${
+                  settings.isDetectionEnabled ? 'bg-green-600 border-green-500' : 'bg-slate-200 border-slate-100'
+                }`}
+              >
+                <div className={`w-7 h-7 rounded-full bg-white shadow-md transition-all duration-300 ${settings.isDetectionEnabled ? 'translate-x-10' : 'translate-x-0'}`} />
+              </div>
+              <div>
+                <h4 className="text-sm font-black text-slate-900 uppercase tracking-tight leading-none">Bird Detection Response</h4>
+                <p className="text-[10px] font-bold text-slate-400 uppercase mt-1">Automatic alarm on visual detection</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex-1 max-w-md w-full">
+            <h4 className="text-[9px] font-black text-slate-400 uppercase tracking-[0.2em] mb-3">Response Sound Selection</h4>
+            <div className="relative group">
+              <select 
+                value={settings.detectionSoundId}
+                onChange={(e) => updateDetectionSound(e.target.value)}
+                className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl px-6 py-4 text-xs font-black uppercase tracking-tight appearance-none cursor-pointer hover:border-blue-300 transition-all focus:outline-none focus:ring-0"
+              >
+                <option value="">Select an Alarm Sound</option>
+                {sounds.map(s => (
+                  <option key={s.id} value={s.id}>{s.name}</option>
+                ))}
+              </select>
+              <Settings className="absolute right-6 top-1/2 -translate-y-1/2 text-slate-300" size={16} />
+            </div>
+          </div>
+
+          <div className={`p-4 rounded-3xl border-2 transition-all ${settings.isDetectionEnabled ? 'bg-blue-50 border-blue-100 text-blue-600' : 'bg-slate-50 border-slate-50 text-slate-300'}`}>
+            <Bird size={32} />
+          </div>
+        </div>
+
+        {/* API Info */}
+        <div className="mt-12 space-y-4">
+          <div className="flex items-center gap-3 px-2">
+            <Terminal size={14} className="text-slate-400" />
+            <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Raspberry Pi Integration</h4>
+          </div>
+          
+          <div className="bg-slate-900 rounded-[32px] p-8 shadow-2xl overflow-hidden relative group">
+            <div className="absolute top-0 right-0 w-64 h-64 bg-blue-500/10 blur-[100px] -mr-32 -mt-32 rounded-full" />
+            <div className="relative flex flex-col gap-6">
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div className="space-y-1">
+                  <h3 className="text-white font-black text-sm uppercase tracking-tight">External Trigger Endpoint</h3>
+                  <p className="text-slate-400 text-[10px] font-bold uppercase tracking-wider">Send a POST request from your Pi's AI software</p>
+                </div>
+                <button 
+                  onClick={copyToClipboard}
+                  className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
+                    copied 
+                    ? 'bg-green-500 text-white shadow-lg shadow-green-500/20' 
+                    : 'bg-white/10 text-white hover:bg-white/20 border border-white/10'
+                  }`}
+                >
+                  {copied ? (
+                    <>
+                      <CheckCheck size={14} />
+                      Copied
+                    </>
+                  ) : (
+                    <>
+                      <Copy size={14} />
+                      Copy URL
+                    </>
+                  )}
+                </button>
+              </div>
+              
+              <div className="bg-black/40 rounded-2xl p-5 border border-white/5 font-mono text-[11px] text-blue-400 break-all flex items-center gap-3">
+                <span className="bg-blue-500/20 text-blue-400 px-2 py-0.5 rounded-md font-black text-[9px] border border-blue-400/20">POST</span>
+                <span className="opacity-90">https://agri-sound.vercel.app/api/detect</span>
+              </div>
+
+              <div className="pt-4 border-t border-white/5">
+                <p className="text-[9px] text-slate-500 font-bold uppercase tracking-widest mb-3">Example Usage (cURL)</p>
+                <code className="block bg-black/20 p-4 rounded-xl text-[10px] text-slate-300 font-mono overflow-x-auto whitespace-nowrap border border-white/5">
+                  curl -X POST https://agri-sound.vercel.app/api/detect
+                </code>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
 
       {/* System Status Metrics */}
       <section className="bg-white rounded-[48px] p-10 shadow-sm border border-slate-100">

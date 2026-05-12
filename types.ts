@@ -49,3 +49,8 @@ export interface DeviceState {
   lastSoundPlayed: string;
   lastSyncTime: number;
 }
+
+export interface SystemSettings {
+  detectionSoundId: string;
+  isDetectionEnabled: boolean;
+}

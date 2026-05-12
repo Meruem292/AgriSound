@@ -1,7 +1,7 @@
 
 import { initializeApp, getApp, getApps, FirebaseApp } from 'firebase/app';
 import { getDatabase, ref, onValue, set, off, Database, remove } from 'firebase/database';
-import { Schedule, SoundFile } from '../types';
+import { Schedule, SoundFile, SystemSettings } from '../types';
 
 /**
  * Robust environment variable retrieval for both local and cloud environments.
@@ -134,6 +134,50 @@ export const firebaseService = {
       return;
     }
     await set(ref(db, 'system/devicePower'), isPowered);
+  },
+
+  subscribeToSystemSettings: (callback: (settings: SystemSettings) => void) => {
+    const db = getDb();
+    if (!db) return () => {};
+    const settingsRef = ref(db, 'system/settings');
+    onValue(settingsRef, (snapshot) => {
+      const data = snapshot.val();
+      callback({
+        detectionSoundId: data?.detectionSoundId || '',
+        isDetectionEnabled: data?.isDetectionEnabled ?? false
+      });
+    });
+    return () => off(settingsRef);
+  },
+
+  getSystemSettings: async (): Promise<SystemSettings> => {
+    const db = getDb();
+    if (!db) return { detectionSoundId: '', isDetectionEnabled: false };
+    const settingsRef = ref(db, 'system/settings');
+    
+    return new Promise((resolve) => {
+      onValue(settingsRef, (snapshot) => {
+        const data = snapshot.val();
+        resolve({
+          detectionSoundId: data?.detectionSoundId || '',
+          isDetectionEnabled: data?.isDetectionEnabled ?? false
+        });
+      }, { onlyOnce: true });
+    });
+  },
+
+  updateSystemSettings: async (settings: Partial<SystemSettings>) => {
+    const db = getDb();
+    if (!db) return;
+    const settingsRef = ref(db, 'system/settings');
+    
+    onValue(settingsRef, async (snapshot) => {
+      const current = snapshot.val() || {};
+      await set(settingsRef, {
+        ...current,
+        ...settings
+      });
+    }, { onlyOnce: true });
   },
 
   subscribeToSchedules: (callback: (schedules: Schedule[]) => void) => {
