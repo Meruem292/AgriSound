@@ -144,7 +144,8 @@ export const firebaseService = {
       const data = snapshot.val();
       callback({
         detectionSoundId: data?.detectionSoundId || '',
-        isDetectionEnabled: data?.isDetectionEnabled ?? false
+        isDetectionEnabled: data?.isDetectionEnabled ?? false,
+        apiTrigger: data?.apiTrigger ?? false
       });
     });
     return () => off(settingsRef);
@@ -152,7 +153,7 @@ export const firebaseService = {
 
   getSystemSettings: async (): Promise<SystemSettings> => {
     const db = getDb();
-    if (!db) return { detectionSoundId: '', isDetectionEnabled: false };
+    if (!db) return { detectionSoundId: '', isDetectionEnabled: false, apiTrigger: false };
     const settingsRef = ref(db, 'system/settings');
     
     return new Promise((resolve) => {
@@ -160,7 +161,8 @@ export const firebaseService = {
         const data = snapshot.val();
         resolve({
           detectionSoundId: data?.detectionSoundId || '',
-          isDetectionEnabled: data?.isDetectionEnabled ?? false
+          isDetectionEnabled: data?.isDetectionEnabled ?? false,
+          apiTrigger: data?.apiTrigger ?? false
         });
       }, { onlyOnce: true });
     });
@@ -271,6 +273,17 @@ export const firebaseService = {
     return () => off(triggerRef);
   },
 
+  getAllSounds: async (): Promise<SoundFile[]> => {
+    const db = getDb();
+    if (!db) return [];
+    const soundsRef = ref(db, 'sounds');
+    return new Promise((resolve) => {
+      onValue(soundsRef, (snapshot) => {
+        const data = snapshot.val();
+        resolve(data ? (Object.values(data) as SoundFile[]) : []);
+      }, { onlyOnce: true });
+    });
+  },
   tryBecomeLeader: async (clientId: string): Promise<boolean> => {
     const db = getDb();
     if (!db) return false;

@@ -69,6 +69,15 @@ const Dashboard: React.FC<DashboardProps> = ({ isDevicePowered, isUnlocked, isLe
     }
   };
 
+  const toggleRandomTrigger = async () => {
+    setIsUpdatingCloud(true);
+    try {
+      await firebaseService.updateSystemSettings({ apiTrigger: !settings.apiTrigger });
+    } finally {
+      setIsUpdatingCloud(false);
+    }
+  };
+
   const updateDetectionSound = async (soundId: string) => {
     setIsUpdatingCloud(true);
     try {
@@ -225,20 +234,41 @@ const Dashboard: React.FC<DashboardProps> = ({ isDevicePowered, isUnlocked, isLe
             </div>
           </div>
 
-          <div className="flex-1 max-w-md w-full">
-            <h4 className="text-[9px] font-black text-slate-400 uppercase tracking-[0.2em] mb-3">Response Sound Selection</h4>
-            <div className="relative group">
-              <select 
-                value={settings.detectionSoundId}
-                onChange={(e) => updateDetectionSound(e.target.value)}
-                className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl px-6 py-4 text-xs font-black uppercase tracking-tight appearance-none cursor-pointer hover:border-blue-300 transition-all focus:outline-none focus:ring-0"
+          <div className="flex-1 max-w-md w-full space-y-6">
+            <div>
+              <h4 className="text-[9px] font-black text-slate-400 uppercase tracking-[0.2em] mb-3">Response Sound Selection</h4>
+              <div className="relative group">
+                <select 
+                  value={settings.detectionSoundId}
+                  onChange={(e) => updateDetectionSound(e.target.value)}
+                  disabled={settings.apiTrigger}
+                  className={`w-full bg-slate-50 border-2 border-slate-100 rounded-2xl px-6 py-4 text-xs font-black uppercase tracking-tight appearance-none cursor-pointer hover:border-blue-300 transition-all focus:outline-none focus:ring-0 ${settings.apiTrigger ? 'opacity-40 grayscale cursor-not-allowed' : ''}`}
+                >
+                  <option value="">Select an Alarm Sound</option>
+                  {sounds.map(s => (
+                    <option key={s.id} value={s.id}>{s.name}</option>
+                  ))}
+                </select>
+                <Settings className="absolute right-6 top-1/2 -translate-y-1/2 text-slate-300" size={16} />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-100">
+              <div className="flex items-center gap-3">
+                <Music size={16} className="text-blue-500" />
+                <div>
+                  <h4 className="text-[10px] font-black text-slate-900 uppercase tracking-tight">API Random Playback</h4>
+                  <p className="text-[8px] font-bold text-slate-400 uppercase">Play random sound from library</p>
+                </div>
+              </div>
+              <div 
+                onClick={toggleRandomTrigger}
+                className={`w-12 h-6 rounded-full relative cursor-pointer transition-all duration-300 p-0.5 border ${
+                  settings.apiTrigger ? 'bg-blue-600 border-blue-500' : 'bg-slate-200 border-slate-100'
+                }`}
               >
-                <option value="">Select an Alarm Sound</option>
-                {sounds.map(s => (
-                  <option key={s.id} value={s.id}>{s.name}</option>
-                ))}
-              </select>
-              <Settings className="absolute right-6 top-1/2 -translate-y-1/2 text-slate-300" size={16} />
+                <div className={`w-4.5 h-4.5 rounded-full bg-white shadow-sm transition-all duration-300 ${settings.apiTrigger ? 'translate-x-6' : 'translate-x-0'}`} />
+              </div>
             </div>
           </div>
 

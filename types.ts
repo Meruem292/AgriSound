@@ -53,4 +53,5 @@ export interface DeviceState {
 export interface SystemSettings {
   detectionSoundId: string;
   isDetectionEnabled: boolean;
+  apiTrigger: boolean;
 }

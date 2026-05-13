@@ -32,7 +32,7 @@ async function startServer() {
     try {
       console.log("[API] Detection received from external source.");
       
-      // 1. Fetch current settings to see if detection is enabled and which sound to use
+      // 1. Fetch current settings
       const settings = await firebaseService.getSystemSettings();
       
       if (!settings.isDetectionEnabled) {
@@ -43,7 +43,20 @@ async function startServer() {
         });
       }
 
-      if (!settings.detectionSoundId) {
+      let soundToPlay = settings.detectionSoundId;
+
+      // Handle random playback if enabled
+      if (settings.apiTrigger) {
+        console.log("[API] Random trigger enabled. Selecting random sound...");
+        const allSounds = await firebaseService.getAllSounds();
+        if (allSounds.length > 0) {
+          const randomIndex = Math.floor(Math.random() * allSounds.length);
+          soundToPlay = allSounds[randomIndex].id;
+          console.log(`[API] Selected random sound: ${allSounds[randomIndex].name} (${soundToPlay})`);
+        }
+      }
+
+      if (!soundToPlay) {
         console.log("[API] Detection ignored: No alarm sound configured.");
         return res.json({ 
           success: false, 
@@ -52,18 +65,17 @@ async function startServer() {
       }
 
       // 2. Trigger the sound globally via Firebase
-      console.log(`[API] Triggering alarm sound ID: ${settings.detectionSoundId}`);
-      await firebaseService.triggerManualSound(settings.detectionSoundId);
+      console.log(`[API] Triggering alarm sound ID: ${soundToPlay}`);
+      await firebaseService.triggerManualSound(soundToPlay);
 
-      // 3. Optional: Logic to turn on hardware power if it's off?
-      // For now, assume hardware is on or handles its own power if needed.
-      // But we can force it on too:
+      // 3. Ensure hardware is on
       await firebaseService.setDevicePower(true);
 
       res.json({ 
         success: true, 
         message: "Detection alarm triggered successfully.",
-        soundId: settings.detectionSoundId
+        soundId: soundToPlay,
+        isRandom: settings.apiTrigger
       });
     } catch (err) {
       console.error("[API] Detection error:", err);
