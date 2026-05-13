@@ -1,8 +1,5 @@
 {
-  "rewrites": [{ "source": "/api/(.*)", "destination": "/api/server" }],
-  "functions": {
-    "api/server.ts": {
-      "runtime": "node-js@18"
-    }
-  }
+  "rewrites": [
+    { "source": "/api/(.*)", "destination": "/api/server" }
+  ]
 }

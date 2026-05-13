@@ -118,8 +118,10 @@ app.all("/api/callback", async (req, res) => {
 });
 
 // Setup Vite or Static Serving
+const isProd = process.env.NODE_ENV === "production";
+
 async function setupApp() {
-  if (process.env.NODE_ENV !== "production") {
+  if (!isProd) {
     const { createServer: createViteServer } = await import("vite");
     const vite = await createViteServer({
       server: { middlewareMode: true },
@@ -129,15 +131,17 @@ async function setupApp() {
   } else {
     const distPath = path.join(process.cwd(), "dist");
     app.use(express.static(distPath));
-    app.get("*", (req, res) => {
+    app.get("*", (req, res, next) => {
+      if (req.path.startsWith("/api/")) return next();
       res.sendFile(path.join(distPath, "index.html"));
     });
   }
 
-  if (process.env.NODE_ENV !== "production") {
+  // Only start the internal listener if we are not in a serverless environment
+  if (process.env.AIS_CONTAINER || !isProd) {
     const PORT = 3000;
     app.listen(PORT, "0.0.0.0", () => {
-      console.log(`Server running on http://localhost:${PORT}`);
+      console.log(`[Server] Running on port ${PORT}`);
     });
   }
 }
@@ -145,11 +149,3 @@ async function setupApp() {
 setupApp().catch(console.error);
 
 export default app;
-
-if (process.env.NODE_ENV !== "production") {
-  const PORT = 3000;
-  app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server running on http://localhost:${PORT}`);
-    console.log(`AI Detection API ready at: http://localhost:${PORT}/api/detect`);
-  });
-}

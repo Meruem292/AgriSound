@@ -321,28 +321,39 @@ const Dashboard: React.FC<DashboardProps> = ({ isDevicePowered, isUnlocked, isLe
               </div>
               
               <div className="bg-black/40 rounded-2xl p-5 border border-white/5 font-mono text-[11px] text-blue-400 break-all space-y-4">
-                <div className="flex items-center gap-3">
-                  <span className="bg-purple-500/20 text-purple-400 px-2 py-0.5 rounded-md font-black text-[9px] border border-purple-400/20">CALLBACK</span>
-                  <span className="opacity-90">{window.location.origin}/api/callback</span>
-                </div>
-                <div className="flex items-center gap-3">
-                   <span className="bg-blue-500/20 text-blue-400 px-2 py-0.5 rounded-md font-black text-[9px] border border-blue-400/20">QUICK PLAY</span>
-                   <span className="opacity-90">{window.location.origin}/api/play</span>
-                </div>
-                <div className="flex items-center gap-3">
-                  <span className="bg-blue-500/20 text-blue-400 px-2 py-0.5 rounded-md font-black text-[9px] border border-blue-400/20">DETECTION</span>
-                  <span className="opacity-90">{window.location.origin}/api/detect</span>
-                </div>
-                <div className="flex items-center gap-3">
-                  <span className="bg-green-500/20 text-green-400 px-2 py-0.5 rounded-md font-black text-[9px] border border-green-100/20 whitespace-nowrap">HW ON</span>
-                  <span className="opacity-90">{window.location.origin}/api/on</span>
-                </div>
+                {window.location.hostname.includes('vercel.app') ? (
+                  <>
+                    <div className="flex items-center gap-3">
+                      <span className="bg-purple-500/20 text-purple-400 px-2 py-0.5 rounded-md font-black text-[9px] border border-purple-400/20">CALLBACK</span>
+                      <span className="opacity-90">{window.location.origin}/api/callback</span>
+                    </div>
+                    <div className="flex items-center gap-3">
+                       <span className="bg-blue-500/20 text-blue-400 px-2 py-0.5 rounded-md font-black text-[9px] border border-blue-400/20">QUICK PLAY</span>
+                       <span className="opacity-90">{window.location.origin}/api/play</span>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <span className="bg-green-500/20 text-green-400 px-2 py-0.5 rounded-md font-black text-[9px] border border-green-100/20 whitespace-nowrap">HW ON</span>
+                      <span className="opacity-90">{window.location.origin}/api/on</span>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="flex items-center gap-3">
+                      <span className="bg-purple-500/20 text-purple-400 px-2 py-0.5 rounded-md font-black text-[9px] border border-purple-400/20">LIVE CALLBACK</span>
+                      <span className="opacity-90">https://agri-sound.vercel.app/api/callback</span>
+                    </div>
+                    <div className="flex items-center gap-3">
+                       <span className="bg-blue-500/20 text-blue-400 px-2 py-0.5 rounded-md font-black text-[9px] border border-blue-400/20">LIVE PLAY</span>
+                       <span className="opacity-90">https://agri-sound.vercel.app/api/play</span>
+                    </div>
+                  </>
+                )}
               </div>
 
               <div className="bg-blue-900/40 p-4 rounded-xl border border-blue-500/20">
                 <p className="text-[10px] text-blue-200 font-bold leading-relaxed">
                   <ShieldCheck size={12} className="inline mr-1 mb-0.5" />
-                  <strong>PRO TIP:</strong> Use the <strong>Shared URL</strong> from the AI Studio sidebar for public access via CURL/ESP32.
+                  <strong>PRO TIP:</strong> The <code>ais-dev</code> URL requires a login. Use your <strong>Vercel URL</strong> (above) for ESP32 / CURL hardware calls.
                 </p>
               </div>
 
