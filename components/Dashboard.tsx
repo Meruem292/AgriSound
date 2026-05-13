@@ -174,12 +174,11 @@ const Dashboard: React.FC<DashboardProps> = ({ isDevicePowered, isUnlocked, isLe
         </div>
       </div>
 
-      {/* Main Control Panel */}
+      {/* Main Control Panel - REMOVED CLICK HANDLER AS IT IS AUTOMATED */}
       <div className="grid grid-cols-1 gap-6">
-        {/* Device Power Button */}
+        {/* Device Power Button - NON-CLICKABLE */}
         <div 
-          onClick={toggleDevicePower}
-          className={`group p-8 rounded-[48px] border-2 flex flex-col justify-between transition-all duration-500 cursor-pointer select-none active:scale-[0.96] h-full ${
+          className={`group p-8 rounded-[48px] border-2 flex flex-col justify-between transition-all duration-500 select-none h-full ${
             isDevicePowered 
             ? 'bg-blue-600 border-blue-500 text-white shadow-2xl shadow-blue-200' 
             : 'bg-white border-slate-100 text-slate-400'
@@ -192,12 +191,12 @@ const Dashboard: React.FC<DashboardProps> = ({ isDevicePowered, isUnlocked, isLe
             {isUpdatingCloud && <RefreshCw size={24} className="animate-spin opacity-40" />}
           </div>
           <div>
-            <h3 className="font-black text-xs uppercase tracking-[0.25em] opacity-70 mb-2">Main Hardware Power</h3>
+            <h3 className="font-black text-xs uppercase tracking-[0.25em] opacity-70 mb-2">Main Hardware State</h3>
             <p className="text-4xl font-black tracking-tighter leading-none">
-              {isDevicePowered ? 'POWERED ON' : 'POWERED OFF'}
+              {isDevicePowered ? 'HW: ACTIVE' : 'HW: STANDBY'}
             </p>
             <p className="text-[10px] font-bold opacity-60 mt-4 leading-relaxed">
-              {isDevicePowered ? 'Hardware active. Ready for triggers.' : 'Hardware disabled. Triggers will not fire.'}
+              {isDevicePowered ? 'Hardware powered and ready for triggers.' : 'Hardware in low-power standby mode.'}
             </p>
           </div>
         </div>
@@ -235,57 +234,33 @@ const Dashboard: React.FC<DashboardProps> = ({ isDevicePowered, isUnlocked, isLe
       <section className="bg-white rounded-[48px] p-10 shadow-sm border border-slate-100">
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-8">
           <div className="space-y-4">
-            <h2 className="text-slate-400 font-bold text-[10px] uppercase tracking-[0.3em] mb-4">AI Vision Config</h2>
+            <h2 className="text-slate-400 font-bold text-[10px] uppercase tracking-[0.3em] mb-4">AI Vision Status</h2>
             <div className="flex items-center gap-6">
-              <div 
-                onClick={toggleDetection}
-                className={`w-20 h-10 rounded-full relative cursor-pointer transition-all duration-300 p-1 border-2 ${
-                  settings.isDetectionEnabled ? 'bg-green-600 border-green-500' : 'bg-slate-200 border-slate-100'
-                }`}
-              >
-                <div className={`w-7 h-7 rounded-full bg-white shadow-md transition-all duration-300 ${settings.isDetectionEnabled ? 'translate-x-10' : 'translate-x-0'}`} />
+              <div className="flex items-center gap-2 px-4 py-2 bg-green-50 text-green-600 border-2 border-green-100 rounded-full">
+                <ShieldCheck size={16} />
+                <span className="text-[10px] font-black uppercase tracking-widest">Active</span>
               </div>
               <div>
-                <h4 className="text-sm font-black text-slate-900 uppercase tracking-tight leading-none">Bird Detection Response</h4>
-                <p className="text-[10px] font-bold text-slate-400 uppercase mt-1">Automatic alarm on visual detection</p>
+                <h4 className="text-sm font-black text-slate-900 uppercase tracking-tight leading-none">Detection Response</h4>
+                <p className="text-[10px] font-bold text-slate-400 uppercase mt-1">System managed response logic</p>
               </div>
             </div>
           </div>
 
-          <div className="flex-1 max-w-md w-full space-y-6">
-            <div>
-              <h4 className="text-[9px] font-black text-slate-400 uppercase tracking-[0.2em] mb-3">Response Sound Selection</h4>
-              <div className="relative group">
-                <select 
-                  value={settings.detectionSoundId}
-                  onChange={(e) => updateDetectionSound(e.target.value)}
-                  disabled={settings.apiTrigger}
-                  className={`w-full bg-slate-50 border-2 border-slate-100 rounded-2xl px-6 py-4 text-xs font-black uppercase tracking-tight appearance-none cursor-pointer hover:border-blue-300 transition-all focus:outline-none focus:ring-0 ${settings.apiTrigger ? 'opacity-40 grayscale cursor-not-allowed' : ''}`}
-                >
-                  <option value="">Select an Alarm Sound</option>
-                  {sounds.map(s => (
-                    <option key={s.id} value={s.id}>{s.name}</option>
-                  ))}
-                </select>
-                <Settings className="absolute right-6 top-1/2 -translate-y-1/2 text-slate-300" size={16} />
-              </div>
-            </div>
-
-            <div className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-100">
-              <div className="flex items-center gap-3">
-                <Music size={16} className="text-blue-500" />
+          <div className="flex-1 max-w-md w-full">
+            <div className="flex items-center justify-between p-6 bg-slate-50 rounded-[32px] border border-slate-100 shadow-sm relative overflow-hidden group">
+              <div className="absolute top-0 right-0 w-32 h-32 bg-blue-500/5 blur-3xl -mr-16 -mt-16 rounded-full" />
+              <div className="flex items-center gap-4 relative">
+                <div className="w-12 h-12 bg-blue-100 text-blue-600 rounded-2xl flex items-center justify-center">
+                  <Music size={24} />
+                </div>
                 <div>
-                  <h4 className="text-[10px] font-black text-slate-900 uppercase tracking-tight">API Random Playback</h4>
-                  <p className="text-[8px] font-bold text-slate-400 uppercase">Play random sound from library</p>
+                  <h4 className="text-[11px] font-black text-slate-900 uppercase tracking-widest">API Playback Strategy</h4>
+                  <p className="text-[10px] font-bold text-slate-400 uppercase mt-1">Anti-Habituation: Random Rotation</p>
                 </div>
               </div>
-              <div 
-                onClick={toggleRandomTrigger}
-                className={`w-12 h-6 rounded-full relative cursor-pointer transition-all duration-300 p-0.5 border ${
-                  settings.apiTrigger ? 'bg-blue-600 border-blue-500' : 'bg-slate-200 border-slate-100'
-                }`}
-              >
-                <div className={`w-4.5 h-4.5 rounded-full bg-white shadow-sm transition-all duration-300 ${settings.apiTrigger ? 'translate-x-6' : 'translate-x-0'}`} />
+              <div className="px-4 py-1.5 bg-blue-600 text-white text-[9px] font-black uppercase tracking-[0.2em] rounded-full shadow-lg shadow-blue-600/20">
+                Active
               </div>
             </div>
           </div>

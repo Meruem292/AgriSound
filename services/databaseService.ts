@@ -105,7 +105,7 @@ class LocalDB {
 const localDB = new LocalDB();
 let dbInitialized = false;
 
-export const databaseService = {
+const databaseServiceObj = {
   ensureInit: async () => {
     if (!dbInitialized) {
       await localDB.init();
@@ -174,75 +174,93 @@ export const databaseService = {
     const newLog = { ...log, id: Math.random().toString(36).substr(2, 9) };
     await localDB.put(STORES.LOGS, newLog);
   },
+};
 
+let playbackIsBusy = false;
+
+export const databaseService = {
+  ...databaseServiceObj,
+  
   performPlayback: async (triggerType: 'manual' | 'scheduled', scheduleId?: string, specificSoundId?: string) => {
-    await databaseService.ensureInit();
-    
-    const allSounds = await databaseService.getSounds();
-    if (allSounds.length === 0) {
-      console.warn("Playback triggered but no sounds are available.");
+    if (playbackIsBusy) {
+      console.log("Playback already in progress. Ignoring trigger.");
       return;
     }
 
-    let targetSounds: SoundFile[] = allSounds;
-    let cycles = 1;
+    try {
+      playbackIsBusy = true;
+      await databaseService.ensureInit();
+      
+      const allSounds = await databaseService.getSounds();
+      if (allSounds.length === 0) {
+        console.warn("Playback triggered but no sounds are available.");
+        return;
+      }
 
-    if (specificSoundId) {
-      const sound = allSounds.find(s => s.id === specificSoundId);
-      if (sound) targetSounds = [sound];
-    } else if (scheduleId) {
-      const schedules = await databaseService.getSchedules();
-      const sched = schedules.find(s => s.id === scheduleId);
-      if (sched) {
-        cycles = sched.playbackCount || 1;
-        if (Array.isArray(sched.soundIds) && sched.soundIds.length > 0) {
-          const filtered = allSounds.filter(s => (sched.soundIds as string[]).includes(s.id));
-          if (filtered.length > 0) targetSounds = filtered;
+      let targetSounds: SoundFile[] = allSounds;
+      let cycles = 1;
+
+      if (specificSoundId) {
+        const sound = allSounds.find(s => s.id === specificSoundId);
+        if (sound) targetSounds = [sound];
+      } else if (scheduleId) {
+        const schedules = await databaseService.getSchedules();
+        const sched = schedules.find(s => s.id === scheduleId);
+        if (sched) {
+          cycles = sched.playbackCount || 1;
+          if (Array.isArray(sched.soundIds) && sched.soundIds.length > 0) {
+            const filtered = allSounds.filter(s => (sched.soundIds as string[]).includes(s.id));
+            if (filtered.length > 0) targetSounds = filtered;
+          }
         }
       }
-    }
 
-    await databaseService.updateDeviceState({ status: DeviceStatus.WAKING });
-    await new Promise(r => setTimeout(r, 6000));
-    await databaseService.updateDeviceState({ status: DeviceStatus.ACTIVE });
+      await databaseService.updateDeviceState({ status: DeviceStatus.WAKING });
+      // Short delay for "waking up" the hardware
+      await new Promise(r => setTimeout(r, 6000));
+      await databaseService.updateDeviceState({ status: DeviceStatus.ACTIVE });
 
-    for (let i = 0; i < cycles; i++) {
-      const sound = targetSounds[Math.floor(Math.random() * targetSounds.length)];
-      await databaseService.updateDeviceState({ 
-        lastSoundPlayed: sound.name,
-        lastWakeTime: Date.now()
-      });
-
-      const audio = new Audio(sound.url);
-      audio.crossOrigin = "anonymous"; // Needed if Supabase has CORS restricted
-
-      await new Promise((resolve) => {
-        audio.onplay = () => {
-          databaseService.addLog({
-            timestamp: Date.now(),
-            soundName: sound.name,
-            triggerType,
-            status: 'success'
-          });
-        };
-        audio.onended = () => resolve(true);
-        audio.onerror = (e) => {
-          console.error("Audio playback error:", e);
-          resolve(false);
-        };
-        audio.play().catch(err => {
-          console.error("Playback blocked. Use the UNLOCK button.", err);
-          resolve(false);
+      for (let i = 0; i < cycles; i++) {
+        const sound = targetSounds[Math.floor(Math.random() * targetSounds.length)];
+        await databaseService.updateDeviceState({ 
+          lastSoundPlayed: sound.name,
+          lastWakeTime: Date.now()
         });
+
+        const audio = new Audio(sound.url);
+        audio.crossOrigin = "anonymous"; 
+        audio.loop = false; // Explicitly disable looping
+
+        await new Promise((resolve) => {
+          audio.onplay = () => {
+            databaseService.addLog({
+              timestamp: Date.now(),
+              soundName: sound.name,
+              triggerType,
+              status: 'success'
+            });
+          };
+          audio.onended = () => resolve(true);
+          audio.onerror = (e) => {
+            console.error("Audio playback error:", e);
+            resolve(false);
+          };
+          audio.play().catch(err => {
+            console.error("Playback blocked. Use the UNLOCK button.", err);
+            resolve(false);
+          });
+        });
+
+        if (i < cycles - 1) await new Promise(r => setTimeout(r, 1500));
+      }
+
+      await databaseService.updateDeviceState({ 
+        status: DeviceStatus.SLEEPING, 
+        lastSyncTime: Date.now() 
       });
-
-      if (i < cycles - 1) await new Promise(r => setTimeout(r, 1500));
+    } finally {
+      playbackIsBusy = false;
     }
-
-    await databaseService.updateDeviceState({ 
-      status: DeviceStatus.SLEEPING, 
-      lastSyncTime: Date.now() 
-    });
   },
 
   triggerManualPlay: async () => {

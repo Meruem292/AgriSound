@@ -20,6 +20,36 @@ async function startServer() {
     res.json({ status: "ok" });
   });
 
+  // Helper to handle the power cycle sequence without blocking API response
+  async function runDetectionSequence(soundId: string) {
+    try {
+      console.log(`[Sequence] Starting detection sequence for ${soundId}...`);
+      
+      // 1. Power ON
+      console.log("[Sequence] Powering ON device...");
+      await firebaseService.setDevicePower(true);
+      
+      // 2. Wait 1 minute for warm-up
+      console.log("[Sequence] Device warming up. Waiting 60 seconds...");
+      await new Promise(resolve => setTimeout(resolve, 60000));
+      
+      // 3. Trigger Sound
+      console.log(`[Sequence] Warm-up complete. Triggering sound: ${soundId}`);
+      await firebaseService.triggerManualSound(soundId);
+      
+      // 4. Wait for playback (e.g. 30 seconds)
+      console.log("[Sequence] Sound triggered. Waiting 30 seconds for playback...");
+      await new Promise(resolve => setTimeout(resolve, 30000));
+      
+      // 5. Power OFF
+      console.log("[Sequence] Playback finished. Powering OFF device.");
+      await firebaseService.setDevicePower(false);
+      
+    } catch (err) {
+      console.error("[Sequence] Error in power cycle sequence:", err);
+    }
+  }
+
   // API to trigger detection - allows both GET for easy testing and POST for standard use
   app.all("/api/detect", async (req, res) => {
     // Only allow GET and POST
@@ -33,25 +63,12 @@ async function startServer() {
       // 1. Fetch current settings
       const settings = await firebaseService.getSystemSettings();
       
-      if (!settings.isDetectionEnabled) {
-        console.log("[API] Detection ignored: Feature is disabled in settings.");
-        return res.json({ 
-          success: false, 
-          message: "Detection is currently disabled in system settings." 
-        });
-      }
-
-      let soundToPlay = settings.detectionSoundId;
-
-      // Handle random playback if enabled
-      if (settings.apiTrigger) {
-        console.log("[API] Random trigger enabled. Selecting random sound...");
-        const allSounds = await firebaseService.getAllSounds();
-        if (allSounds.length > 0) {
-          const randomIndex = Math.floor(Math.random() * allSounds.length);
-          soundToPlay = allSounds[randomIndex].id;
-          console.log(`[API] Selected random sound: ${allSounds[randomIndex].name} (${soundToPlay})`);
-        }
+      // 2. Select Sound (Default to random from library for anti-habituation)
+      const allSounds = await firebaseService.getAllSounds();
+      if (allSounds.length > 0) {
+        const randomIndex = Math.floor(Math.random() * allSounds.length);
+        soundToPlay = allSounds[randomIndex].id;
+        console.log(`[API] Selected random sound for anti-habituation: ${allSounds[randomIndex].name} (${soundToPlay})`);
       }
 
       if (!soundToPlay) {
@@ -62,16 +79,13 @@ async function startServer() {
         });
       }
 
-      // 2. Trigger the sound globally via Firebase
-      console.log(`[API] Triggering alarm sound ID: ${soundToPlay}`);
-      await firebaseService.triggerManualSound(soundToPlay);
-
-      // 3. Ensure hardware is on
-      await firebaseService.setDevicePower(true);
+      // Start the async sequence (Power ON -> 60s Wait -> Sound -> 30s Wait -> Power OFF)
+      // We don't await this so the API response returns immediately
+      runDetectionSequence(soundToPlay);
 
       res.json({ 
         success: true, 
-        message: "Detection alarm triggered successfully.",
+        message: "Detection received. Hardware sequence initiated (Power ON -> 1m delay -> Playback -> Power OFF).",
         soundId: soundToPlay,
         isRandom: settings.apiTrigger
       });
