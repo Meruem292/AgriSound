@@ -53,7 +53,7 @@ const Dashboard: React.FC<DashboardProps> = ({ isDevicePowered, isUnlocked, isLe
   }, []);
 
   const copyToClipboard = () => {
-    const url = "https://agri-sound.vercel.app/api/detect";
+    const url = `${window.location.origin}/api/detect`;
     navigator.clipboard.writeText(url).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
@@ -320,22 +320,43 @@ const Dashboard: React.FC<DashboardProps> = ({ isDevicePowered, isUnlocked, isLe
                 </div>
               </div>
               
-              <div className="bg-black/40 rounded-2xl p-5 border border-white/5 font-mono text-[11px] text-blue-400 break-all flex items-center gap-3">
-                <span className="bg-blue-500/20 text-blue-400 px-2 py-0.5 rounded-md font-black text-[9px] border border-blue-400/20">GET / POST</span>
-                <span className="opacity-90">https://agri-sound.vercel.app/api/detect</span>
+              <div className="bg-black/40 rounded-2xl p-5 border border-white/5 font-mono text-[11px] text-blue-400 break-all space-y-4">
+                <div className="flex items-center gap-3">
+                  <span className="bg-purple-500/20 text-purple-400 px-2 py-0.5 rounded-md font-black text-[9px] border border-purple-400/20">CALLBACK</span>
+                  <span className="opacity-90">{window.location.origin}/api/callback</span>
+                </div>
+                <div className="flex items-center gap-3">
+                   <span className="bg-blue-500/20 text-blue-400 px-2 py-0.5 rounded-md font-black text-[9px] border border-blue-400/20">QUICK PLAY</span>
+                   <span className="opacity-90">{window.location.origin}/api/play</span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <span className="bg-blue-500/20 text-blue-400 px-2 py-0.5 rounded-md font-black text-[9px] border border-blue-400/20">DETECTION</span>
+                  <span className="opacity-90">{window.location.origin}/api/detect</span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <span className="bg-green-500/20 text-green-400 px-2 py-0.5 rounded-md font-black text-[9px] border border-green-100/20 whitespace-nowrap">HW ON</span>
+                  <span className="opacity-90">{window.location.origin}/api/on</span>
+                </div>
+              </div>
+
+              <div className="bg-blue-900/40 p-4 rounded-xl border border-blue-500/20">
+                <p className="text-[10px] text-blue-200 font-bold leading-relaxed">
+                  <ShieldCheck size={12} className="inline mr-1 mb-0.5" />
+                  <strong>PRO TIP:</strong> Use the <strong>Shared URL</strong> from the AI Studio sidebar for public access via CURL/ESP32.
+                </p>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t border-white/5">
                 <div>
                   <p className="text-[9px] text-slate-500 font-bold uppercase tracking-widest mb-3">Simple Call (Browser/Python)</p>
                   <code className="block bg-black/20 p-4 rounded-xl text-[10px] text-slate-300 font-mono overflow-x-auto whitespace-nowrap border border-white/5">
-                    requests.get("https://agri-sound.vercel.app/api/detect")
+                    requests.get("{window.location.origin}/api/detect")
                   </code>
                 </div>
                 <div>
                   <p className="text-[9px] text-slate-500 font-bold uppercase tracking-widest mb-3">Terminal (cURL)</p>
                   <code className="block bg-black/20 p-4 rounded-xl text-[10px] text-slate-300 font-mono overflow-x-auto whitespace-nowrap border border-white/5">
-                    curl "https://agri-sound.vercel.app/api/detect"
+                    curl "{window.location.origin}/api/detect"
                   </code>
                 </div>
               </div>

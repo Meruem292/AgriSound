@@ -7,8 +7,17 @@ import { Schedule, SoundFile, SystemSettings } from '../types';
  * Robust environment variable retrieval for both local and cloud environments.
  */
 const getEnv = (key: string): string | undefined => {
-  const metaEnv = (import.meta as any).env || {};
-  const procEnv = (typeof process !== 'undefined' ? process.env : {}) || {};
+  // Safely check for process.env
+  const procEnv = (typeof process !== 'undefined' ? process.env : {}) as Record<string, string | undefined>;
+  
+  // Safely check for import.meta.env (Vite)
+  let metaEnv: Record<string, string | undefined> = {};
+  try {
+    // @ts-ignore
+    metaEnv = (import.meta as any).env || {};
+  } catch (e) {
+    // Silence error if import.meta is not available
+  }
 
   const check = (k: string) => {
     if (metaEnv[k]) return metaEnv[k];
