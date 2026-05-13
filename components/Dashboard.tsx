@@ -18,6 +18,8 @@ const Dashboard: React.FC<DashboardProps> = ({ isDevicePowered, isUnlocked, isLe
   const [activePlaybackId, setActivePlaybackId] = useState<string | null>(null);
   const [settings, setSettings] = useState<SystemSettings>({ detectionSoundId: '', isDetectionEnabled: false });
   const [copied, setCopied] = useState(false);
+  const [testLoading, setTestLoading] = useState(false);
+  const [testResult, setTestResult] = useState<{success: boolean, message: string} | null>(null);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -56,6 +58,22 @@ const Dashboard: React.FC<DashboardProps> = ({ isDevicePowered, isUnlocked, isLe
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     });
+  };
+
+  const testTrigger = async () => {
+    setTestLoading(true);
+    setTestResult(null);
+    try {
+      // Test the local endpoint first to prove it works in the current environment
+      const response = await fetch('/api/detect');
+      const data = await response.json();
+      setTestResult(data);
+    } catch (error) {
+      setTestResult({ success: false, message: "Could not connect to API" });
+    } finally {
+      setTestLoading(false);
+      setTimeout(() => setTestResult(null), 5000);
+    }
   };
 
   const toggleDevicePower = async () => {
@@ -290,40 +308,61 @@ const Dashboard: React.FC<DashboardProps> = ({ isDevicePowered, isUnlocked, isLe
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div className="space-y-1">
                   <h3 className="text-white font-black text-sm uppercase tracking-tight">External Trigger Endpoint</h3>
-                  <p className="text-slate-400 text-[10px] font-bold uppercase tracking-wider">Send a POST request from your Pi's AI software</p>
+                  <p className="text-slate-400 text-[10px] font-bold uppercase tracking-wider">Send a GET or POST request from your Pi's AI software</p>
                 </div>
-                <button 
-                  onClick={copyToClipboard}
-                  className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
-                    copied 
-                    ? 'bg-green-500 text-white shadow-lg shadow-green-500/20' 
-                    : 'bg-white/10 text-white hover:bg-white/20 border border-white/10'
-                  }`}
-                >
-                  {copied ? (
-                    <>
-                      <CheckCheck size={14} />
-                      Copied
-                    </>
-                  ) : (
-                    <>
-                      <Copy size={14} />
-                      Copy URL
-                    </>
-                  )}
-                </button>
+                <div className="flex items-center gap-3">
+                  <button 
+                    onClick={testTrigger}
+                    disabled={testLoading}
+                    className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
+                      testResult 
+                      ? (testResult.success ? 'bg-green-500 text-white' : 'bg-red-500 text-white')
+                      : 'bg-blue-600 text-white hover:bg-blue-500 shadow-lg shadow-blue-600/20'
+                    } disabled:opacity-50`}
+                  >
+                    {testLoading ? 'Testing...' : (testResult ? (testResult.success ? 'Success!' : 'Failed') : 'Test Now')}
+                  </button>
+                  <button 
+                    onClick={copyToClipboard}
+                    className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
+                      copied 
+                      ? 'bg-green-500 text-white shadow-lg shadow-green-500/20' 
+                      : 'bg-white/10 text-white hover:bg-white/20 border border-white/10'
+                    }`}
+                  >
+                    {copied ? (
+                      <>
+                        <CheckCheck size={14} />
+                        Copied
+                      </>
+                    ) : (
+                      <>
+                        <Copy size={14} />
+                        Copy URL
+                      </>
+                    )}
+                  </button>
+                </div>
               </div>
               
               <div className="bg-black/40 rounded-2xl p-5 border border-white/5 font-mono text-[11px] text-blue-400 break-all flex items-center gap-3">
-                <span className="bg-blue-500/20 text-blue-400 px-2 py-0.5 rounded-md font-black text-[9px] border border-blue-400/20">POST</span>
+                <span className="bg-blue-500/20 text-blue-400 px-2 py-0.5 rounded-md font-black text-[9px] border border-blue-400/20">GET / POST</span>
                 <span className="opacity-90">https://agri-sound.vercel.app/api/detect</span>
               </div>
 
-              <div className="pt-4 border-t border-white/5">
-                <p className="text-[9px] text-slate-500 font-bold uppercase tracking-widest mb-3">Example Usage (cURL)</p>
-                <code className="block bg-black/20 p-4 rounded-xl text-[10px] text-slate-300 font-mono overflow-x-auto whitespace-nowrap border border-white/5">
-                  curl -X POST https://agri-sound.vercel.app/api/detect
-                </code>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t border-white/5">
+                <div>
+                  <p className="text-[9px] text-slate-500 font-bold uppercase tracking-widest mb-3">Simple Call (Browser/Python)</p>
+                  <code className="block bg-black/20 p-4 rounded-xl text-[10px] text-slate-300 font-mono overflow-x-auto whitespace-nowrap border border-white/5">
+                    requests.get("https://agri-sound.vercel.app/api/detect")
+                  </code>
+                </div>
+                <div>
+                  <p className="text-[9px] text-slate-500 font-bold uppercase tracking-widest mb-3">Terminal (cURL)</p>
+                  <code className="block bg-black/20 p-4 rounded-xl text-[10px] text-slate-300 font-mono overflow-x-auto whitespace-nowrap border border-white/5">
+                    curl "https://agri-sound.vercel.app/api/detect"
+                  </code>
+                </div>
               </div>
             </div>
           </div>

@@ -20,17 +20,15 @@ async function startServer() {
     res.json({ status: "ok" });
   });
 
-  /**
-   * API to trigger the detection alarm.
-   * This is intended to be called by an AI Camera or external system.
-   * 
-   * Method: POST
-   * URL: /api/detect
-   * Body: {} (Empty body is fine, or optional metadata)
-   */
-  app.post("/api/detect", async (req, res) => {
+  // API to trigger detection - allows both GET for easy testing and POST for standard use
+  app.all("/api/detect", async (req, res) => {
+    // Only allow GET and POST
+    if (req.method !== "GET" && req.method !== "POST") {
+      return res.status(405).json({ success: false, message: "Method not allowed" });
+    }
+    
     try {
-      console.log("[API] Detection received from external source.");
+      console.log(`[API] Detection triggered via ${req.method}`);
       
       // 1. Fetch current settings
       const settings = await firebaseService.getSystemSettings();
