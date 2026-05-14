@@ -7,31 +7,30 @@ import { Schedule, SoundFile, SystemSettings } from '../types';
  * Robust environment variable retrieval for both local and cloud environments.
  */
 const getEnv = (key: string): string | undefined => {
-  // 1. Try process.env (Node.js / Vercel)
-  if (typeof process !== 'undefined' && process.env) {
-    const val = process.env[key] || process.env[`VITE_${key}`] || process.env[`NEXT_PUBLIC_${key}`];
-    if (val) return val;
-  }
+  // 1. Try global process.env (Node.js / Vercel)
+  const g = (typeof globalThis !== 'undefined' ? globalThis : typeof window !== 'undefined' ? window : {}) as any;
+  const proc = g.process || {};
+  const env = proc.env || {};
 
-  // 2. Try import.meta.env (Vite)
+  if (env[key]) return env[key];
+  if (env[`VITE_${key}`]) return env[`VITE_${key}`];
+  if (env[`NEXT_PUBLIC_${key}`]) return env[`NEXT_PUBLIC_${key}`];
+
+  // 2. Try import.meta.env with string bypass to avoid CJS syntax errors
   try {
-    // @ts-ignore
-    const env = import.meta.env;
-    if (env) {
-      const val = env[key] || env[`VITE_${key}`] || env[`NEXT_PUBLIC_${key}`];
-      if (val) return val;
+    const meta = (g as any)['import' + '.meta'];
+    if (meta && meta.env) {
+      const venv = meta.env;
+      if (venv[key]) return venv[key];
+      if (venv[`VITE_${key}`]) return venv[`VITE_${key}`];
     }
-  } catch (e) {
-    // import.meta might not be available in some environments
-  }
+  } catch (e) {}
 
-  // 3. Last ditch: Case-insensitive search in process.env
-  if (typeof process !== 'undefined' && process.env) {
-    const upperKey = key.toUpperCase();
-    for (const k in process.env) {
-      if (k.toUpperCase().endsWith(upperKey)) {
-        return process.env[k];
-      }
+  // 3. Fallback to suffix search
+  const upperKey = key.toUpperCase();
+  for (const k in env) {
+    if (k.toUpperCase().endsWith(upperKey)) {
+      return env[k];
     }
   }
 

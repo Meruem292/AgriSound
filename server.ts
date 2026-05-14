@@ -89,7 +89,12 @@ app.all("/api/play", async (req, res) => {
 });
 
 app.all("/api/ping", (req, res) => {
-  res.json({ status: "ok", timestamp: Date.now() });
+  res.json({ 
+    status: "ok", 
+    timestamp: Date.now(),
+    env: process.env.NODE_ENV,
+    vercel: !!process.env.VERCEL
+  });
 });
 
 app.all("/api/on", async (req, res) => {
@@ -104,11 +109,17 @@ app.all("/api/off", async (req, res) => {
 
 app.all("/api/callback", async (req, res) => {
   try {
+    console.log("[Server] Env Check:", {
+      isProd,
+      isVercel,
+      hasKey: !!getEnv('FIREBASE_API_KEY'),
+      host: req.get('host')
+    });
     const allSounds = await firebaseService.getAllSounds();
     if (allSounds.length > 0) {
       const sound = allSounds[Math.floor(Math.random() * allSounds.length)];
       await firebaseService.triggerManualSound(sound.id);
-      return res.json({ success: true, message: `Callback triggered: ${sound.name}` });
+      return res.json({ success: true, message: `Callback triggered play: ${sound.name}` });
     }
     res.json({ success: true, message: "Callback received (no sounds)" });
   } catch (error) {
@@ -121,22 +132,23 @@ const isProd = process.env.NODE_ENV === "production";
 const isVercel = !!process.env.VERCEL;
 
 async function setupApp() {
-  if (!isProd) {
-    // Dynamic import to avoid bundling Vite in production
-    const { createServer: createViteServer } = await import("vite");
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: "spa",
-    });
-    app.use(vite.middlewares);
-  } else {
-    // Only serve static files if not on Vercel (Vercel handles static via rewrites usually)
-    // but keeping it for local production testing / other hosts
+  // We avoid any Vite imports on Vercel to prevent build issues
+  if (!isProd && !isVercel) {
+    try {
+      const { createServer: createViteServer } = await import("vite");
+      const vite = await createViteServer({
+        server: { middlewareMode: true },
+        appType: "spa",
+      });
+      app.use(vite.middlewares);
+    } catch (e) {
+      console.warn("Vite not found, skipping middleware");
+    }
+  } else if (isProd && !isVercel) {
     const distPath = path.join(process.cwd(), "dist");
     app.use(express.static(distPath));
     app.get("*", (req, res, next) => {
       if (req.path.startsWith("/api/")) return next();
-      // On Vercel, this might fail if dist doesn't exist in the function's env
       try {
         res.sendFile(path.join(distPath, "index.html"));
       } catch (e) {
@@ -145,16 +157,16 @@ async function setupApp() {
     });
   }
 
-  // Only start the internal listener if we are not on Vercel
+  // Only start the internal listener if we are in a container/local, not on Vercel
   if (!isVercel || process.env.AIS_CONTAINER) {
     const PORT = process.env.PORT || 3000;
-    app.listen(PORT, () => {
-      console.log(`[Server] Running on port ${PORT}`);
+    app.listen(PORT, "0.0.0.0", () => {
+      console.log(`[Server] Listening on port ${PORT}`);
     });
   }
 }
 
-// In serverless environments, we don't await setupApp() at top level
+// Only run setup if not on Vercel (Vercel handles routing itself)
 if (!isVercel) {
   setupApp().catch(console.error);
 }
