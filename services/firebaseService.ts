@@ -7,42 +7,31 @@ import { Schedule, SoundFile, SystemSettings } from '../types';
  * Robust environment variable retrieval for both local and cloud environments.
  */
 const getEnv = (key: string): string | undefined => {
-  // Safely check for process.env
-  const procEnv = (typeof process !== 'undefined' ? process.env : {}) as Record<string, string | undefined>;
-  
-  // Safely check for import.meta.env (Vite)
-  let metaEnv: Record<string, string | undefined> = {};
-  try {
-    // @ts-ignore
-    metaEnv = (import.meta as any).env || {};
-  } catch (e) {
-    // Silence error if import.meta is not available
-  }
-
-  const check = (k: string) => {
-    if (metaEnv[k]) return metaEnv[k];
-    if (procEnv[k]) return procEnv[k];
-    return undefined;
-  };
-
-  // 1. Exact match
-  let val = check(key);
-  if (val) return val;
-
-  // 2. Framework prefixes
-  const prefixes = ['VITE_', 'NEXT_PUBLIC_', 'VITE_NEXT_PUBLIC_'];
-  for (const p of prefixes) {
-    val = check(`${p}${key}`);
+  // 1. Try process.env (Node.js / Vercel)
+  if (typeof process !== 'undefined' && process.env) {
+    const val = process.env[key] || process.env[`VITE_${key}`] || process.env[`NEXT_PUBLIC_${key}`];
     if (val) return val;
   }
 
-  // 3. Scan all keys for suffix match
-  const allKeys = [...Object.keys(metaEnv), ...Object.keys(procEnv)];
-  const upperKey = key.toUpperCase();
-  for (const k of allKeys) {
-    if (k.toUpperCase().endsWith(upperKey)) {
-      const found = check(k);
-      if (found) return found;
+  // 2. Try import.meta.env (Vite)
+  try {
+    // @ts-ignore
+    const env = import.meta.env;
+    if (env) {
+      const val = env[key] || env[`VITE_${key}`] || env[`NEXT_PUBLIC_${key}`];
+      if (val) return val;
+    }
+  } catch (e) {
+    // import.meta might not be available in some environments
+  }
+
+  // 3. Last ditch: Case-insensitive search in process.env
+  if (typeof process !== 'undefined' && process.env) {
+    const upperKey = key.toUpperCase();
+    for (const k in process.env) {
+      if (k.toUpperCase().endsWith(upperKey)) {
+        return process.env[k];
+      }
     }
   }
 
@@ -66,7 +55,10 @@ const initFirebase = (): FirebaseApp | null => {
   };
 
   if (!config.apiKey || !config.databaseURL) {
-    console.error("Firebase Config Missing:", config);
+    console.error("Firebase Config Missing. Keys checked:", Object.keys(config).filter(k => !(config as any)[k]));
+    console.log("Current Environment Check:");
+    console.log("- FIREBASE_API_KEY available:", !!getEnv('FIREBASE_API_KEY'));
+    console.log("- FIREBASE_DATABASE_URL available:", !!getEnv('FIREBASE_DATABASE_URL'));
     return null;
   }
 
@@ -117,7 +109,7 @@ export const firebaseService = {
   setMainSwitch: async (isOn: boolean) => {
     const db = getDb();
     if (!db) {
-      alert("Firebase not connected. Cannot toggle Main Switch.");
+      console.error("Firebase not connected. Cannot toggle Main Switch.");
       return;
     }
     await set(ref(db, 'system/mainSwitch'), isOn);
@@ -139,7 +131,7 @@ export const firebaseService = {
   setDevicePower: async (isPowered: boolean) => {
     const db = getDb();
     if (!db) {
-      alert("Firebase not connected. Cannot toggle Device Power.");
+      console.error("Firebase not connected. Cannot toggle Device Power.");
       return;
     }
     await set(ref(db, 'system/devicePower'), isPowered);

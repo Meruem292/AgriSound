@@ -1,12 +1,7 @@
 import express from "express";
 import cors from "cors";
 import path from "path";
-import { fileURLToPath } from "url";
-import { createServer as createViteServer } from "vite";
 import { firebaseService } from "./services/firebaseService";
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 const app = express();
 
@@ -108,20 +103,26 @@ app.all("/api/off", async (req, res) => {
 });
 
 app.all("/api/callback", async (req, res) => {
-  const allSounds = await firebaseService.getAllSounds();
-  if (allSounds.length > 0) {
-    const sound = allSounds[Math.floor(Math.random() * allSounds.length)];
-    await firebaseService.triggerManualSound(sound.id);
-    return res.json({ success: true, message: `Callback triggered: ${sound.name}` });
+  try {
+    const allSounds = await firebaseService.getAllSounds();
+    if (allSounds.length > 0) {
+      const sound = allSounds[Math.floor(Math.random() * allSounds.length)];
+      await firebaseService.triggerManualSound(sound.id);
+      return res.json({ success: true, message: `Callback triggered: ${sound.name}` });
+    }
+    res.json({ success: true, message: "Callback received (no sounds)" });
+  } catch (error) {
+    res.status(500).json({ success: false, error: String(error) });
   }
-  res.json({ success: true, message: "Callback received" });
 });
 
 // Setup Vite or Static Serving
 const isProd = process.env.NODE_ENV === "production";
+const isVercel = !!process.env.VERCEL;
 
 async function setupApp() {
   if (!isProd) {
+    // Dynamic import to avoid bundling Vite in production
     const { createServer: createViteServer } = await import("vite");
     const vite = await createViteServer({
       server: { middlewareMode: true },
@@ -129,23 +130,33 @@ async function setupApp() {
     });
     app.use(vite.middlewares);
   } else {
+    // Only serve static files if not on Vercel (Vercel handles static via rewrites usually)
+    // but keeping it for local production testing / other hosts
     const distPath = path.join(process.cwd(), "dist");
     app.use(express.static(distPath));
     app.get("*", (req, res, next) => {
       if (req.path.startsWith("/api/")) return next();
-      res.sendFile(path.join(distPath, "index.html"));
+      // On Vercel, this might fail if dist doesn't exist in the function's env
+      try {
+        res.sendFile(path.join(distPath, "index.html"));
+      } catch (e) {
+        res.status(404).send("Not Found");
+      }
     });
   }
 
-  // Only start the internal listener if we are not in a serverless environment
-  if (process.env.AIS_CONTAINER || !isProd) {
-    const PORT = 3000;
-    app.listen(PORT, "0.0.0.0", () => {
+  // Only start the internal listener if we are not on Vercel
+  if (!isVercel || process.env.AIS_CONTAINER) {
+    const PORT = process.env.PORT || 3000;
+    app.listen(PORT, () => {
       console.log(`[Server] Running on port ${PORT}`);
     });
   }
 }
 
-setupApp().catch(console.error);
+// In serverless environments, we don't await setupApp() at top level
+if (!isVercel) {
+  setupApp().catch(console.error);
+}
 
 export default app;
