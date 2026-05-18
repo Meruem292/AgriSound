@@ -24,13 +24,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // Default sound ID or from query/body
     const soundId = (req.query.soundId as string) || (req.body?.soundId as string) || 'default_alert';
 
-    // 1. Ensure Device Power is ON
-    const devicePowerRef = ref(db, 'system/devicePower');
-    const devicePowerSnap = await get(devicePowerRef);
-    const isPoweredOn = devicePowerSnap.val() === true;
+    // 1. Ensure Power systems are ON
+    const devicePowerPath = 'system/devicePower';
+    const mainSwitchPath = 'system/mainSwitch';
+    
+    const devicePowerRef = ref(db, devicePowerPath);
+    const mainSwitchRef = ref(db, mainSwitchPath);
 
-    if (!isPoweredOn) {
+    const [pSnap, mSnap] = await Promise.all([get(devicePowerRef), get(mainSwitchRef)]);
+    
+    if (pSnap.val() !== true) {
       await set(devicePowerRef, true);
+    }
+    if (mSnap.val() !== true) {
+      await set(mainSwitchRef, true);
     }
 
     // 2. Schedule playback with 30s delay
@@ -46,7 +53,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     res.status(200).json({ 
       status: "ok", 
-      message: `Playback scheduled for sound: ${soundId} in 30 seconds. Main power ensured.`, 
+      message: `Playback scheduled for sound: ${soundId} in 30 seconds. Power systems enabled.`, 
       timestamp: new Date().toISOString(),
       scheduledPlayTime: new Date(scheduledTime).toISOString()
     });

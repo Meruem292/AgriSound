@@ -25,7 +25,7 @@ const App: React.FC = () => {
   // Use refs to keep track of current state for the worker interval
   const devicePowerRef = useRef(isDevicePowered);
   const locallyUnlockedRef = useRef(isLocallyUnlocked);
-  const lastManualTriggerRef = useRef<number>(Date.now());
+  const lastManualTriggerRef = useRef<number>(0); // Initialize to 0 to catch pending triggers on load
 
   useEffect(() => {
     isLeaderRef.current = isLeader;
@@ -143,20 +143,43 @@ const App: React.FC = () => {
         // AND client must be unlocked (user interaction granted)
         if (!trigger || !locallyUnlockedRef.current || !isLeaderRef.current) return;
         
+        // Track pending trigger for power management
+        if ((trigger as any).scheduledPlayTimestamp) {
+          (window as any)._pendingManualTrigger = trigger;
+        }
+
         // Avoid re-playing old triggers or the same trigger multiple times
+        // If it's a scheduled manual trigger, we only skip if it's already "expired" (e.g. played long ago)
+        const now = Date.now();
+        const triggerAge = now - trigger.timestamp;
+        
+        // If trigger is very old (> 5 mins) and not a future scheduled one, skip
+        if (triggerAge > 300000 && !(trigger as any).scheduledPlayTimestamp) return;
+
+        // Session-based deduplication
         if (trigger.timestamp <= lastManualTriggerRef.current) return;
+        
+        // If it's a future trigger, don't update the ref yet, wait until it plays
+        // or just update it now to acknowledge we've "received" it.
+        // Actually, if we update it now, we won't process it again if we refresh?
+        // Let's use a "played" flag in the trigger object if we could, but we can't easily write to Firebase here without loops.
+        // Let's just update the ref to acknowledge receipt.
         lastManualTriggerRef.current = trigger.timestamp;
 
-        console.log(`[AgriSound] Remote Manual Trigger (Leader): ${trigger.soundId}`);
+        console.log(`[AgriSound] Received Manual Trigger${(trigger as any).scheduledPlayTimestamp ? ' (Scheduled)' : ''}: ${trigger.soundId}`);
         
         // Handle Scheduled Delay from API
-        const now = Date.now();
         const delay = (trigger as any).scheduledPlayTimestamp ? (trigger as any).scheduledPlayTimestamp - now : 0;
 
         const executePlay = () => {
+          // Clear pending state
+          if ((window as any)._pendingManualTrigger?.timestamp === trigger.timestamp) {
+            (window as any)._pendingManualTrigger = null;
+          }
+
           // Check power exactly at execution time
           if (!devicePowerRef.current) {
-            console.log("[AgriSound] Skipping execution - Device Power is OFF");
+            console.log("[AgriSound] Skipping execution - Device Power is OFF (User must have turned it off manually)");
             return;
           }
           console.log(`[AgriSound] Executing playback for ${trigger.soundId} after ${delay > 0 ? delay : 0}ms delay`);
@@ -213,6 +236,7 @@ const App: React.FC = () => {
       const schedules = await databaseService.getSchedules();
       const deviceState = await databaseService.getDeviceState();
       const now = new Date();
+      const nowMs = now.getTime();
       
       const timeFormatter = new Intl.DateTimeFormat('en-GB', {
         timeZone: "Asia/Manila",
@@ -224,8 +248,10 @@ const App: React.FC = () => {
       const daysMap: Record<string, number> = { 'Sunday': 0, 'Monday': 1, 'Tuesday': 2, 'Wednesday': 3, 'Thursday': 4, 'Friday': 5, 'Saturday': 6 };
       const currentDay = daysMap[phDayString];
 
-      // Anticipatory Logic: Look 1 minute ahead
+      // Anticipatory Logic: Look ahead
       let upcomingTrigger = false;
+      
+      // 1. Check Schedules
       const [nowHour, nowMin] = currentHHmm.split(':').map(Number);
       const nowTimeInMins = nowHour * 60 + nowMin;
 
@@ -235,36 +261,45 @@ const App: React.FC = () => {
         const [sHour, sMin] = s.time.split(':').map(Number);
         const sTimeInMins = sHour * 60 + sMin;
         
-        // Handle day wrap-around (e.g. 23:59 to 00:00)
+        // Handle day wrap-around
         let diff = sTimeInMins - nowTimeInMins;
-        if (diff < -1400) diff += 1440; // Handle midnight wrap
-
-        const alreadyRan = (Date.now() - (s.lastRunTimestamp || 0)) < 61000;
+        if (diff < -1400) diff += 1440; 
         
-        // Power ON if:
-        // 1. It's exactly 1 minute before (diff === 1)
-        // 2. It's the trigger minute (diff === 0)
-        // 3. We are currently playing (status !== SLEEPING)
         if (diff === 1 || diff === 0 || (deviceState.status !== DeviceStatus.SLEEPING)) {
           upcomingTrigger = true;
           break;
         }
       }
 
-      // Automatically turn on if a schedule is approaching
+      // 2. Check for Pending Manual Trigger from API
+      if (!upcomingTrigger) {
+        // We can't easily wait for the subscription here, but we can peek at the ref if we stored it
+        // Or better, just check if the system is currently "active" or "waking"
+        if (deviceState.status !== DeviceStatus.SLEEPING) {
+          upcomingTrigger = true;
+        } else {
+          // Peek manual trigger if possible (using a global or shared state)
+          const pendingTrigger = (window as any)._pendingManualTrigger;
+          if (pendingTrigger && pendingTrigger.scheduledPlayTimestamp > nowMs && (pendingTrigger.scheduledPlayTimestamp - nowMs) < 60000) {
+            upcomingTrigger = true;
+          }
+        }
+      }
+
+      // Automatically turn on if a schedule or manual trigger is approaching
       if (upcomingTrigger) {
         if (!devicePowerRef.current) {
-          console.log("[AgriSound] Leader: Powering On Device");
+          console.log("[AgriSound] Leader: Powering On Device for impending trigger");
           await firebaseService.setDevicePower(true);
         }
       } else {
-        // Automatically turn off if no schedule is approaching and last playback was > 5s ago
+        // Automatically turn off if no trigger is approaching
         if (devicePowerRef.current) {
-          const lastPlaybackAge = Date.now() - deviceState.lastSyncTime;
+          const lastPlaybackAge = nowMs - (deviceState.lastSyncTime || 0);
           const isSystemIdle = deviceState.status === DeviceStatus.SLEEPING;
           
           if (isSystemIdle && lastPlaybackAge > 5000) {
-            console.log("[AgriSound] Leader: Powering Off Hardware");
+            console.log("[AgriSound] Leader: Powering Off Hardware (System Idle)");
             await firebaseService.setDevicePower(false);
           }
         }

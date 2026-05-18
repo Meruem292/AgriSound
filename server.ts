@@ -40,14 +40,24 @@ async function startServer() {
       
       const soundId = (req.query.soundId as string) || (req.body?.soundId as string) || 'default_alert';
 
-      // 1. Ensure Device Power is ON
-      const devicePowerRef = ref(db, 'system/devicePower');
-      const devicePowerSnap = await get(devicePowerRef);
-      const isPoweredOn = devicePowerSnap.val() === true;
+      console.log(`[AgriSound API] Request received for sound: ${soundId}`);
 
-      if (!isPoweredOn) {
-        console.log("[AgriSound API] Turning ON Device Power...");
+      // 1. Ensure Device Power is ON
+      const devicePowerPath = 'system/devicePower';
+      const mainSwitchPath = 'system/mainSwitch';
+      
+      const devicePowerRef = ref(db, devicePowerPath);
+      const mainSwitchRef = ref(db, mainSwitchPath);
+
+      const [pSnap, mSnap] = await Promise.all([get(devicePowerRef), get(mainSwitchRef)]);
+      
+      if (pSnap.val() !== true) {
+        console.log("[AgriSound API] Enabling Device Power...");
         await set(devicePowerRef, true);
+      }
+      if (mSnap.val() !== true) {
+        console.log("[AgriSound API] Enabling Main Switch...");
+        await set(mainSwitchRef, true);
       }
 
       // 2. Schedule playback with 30s delay
@@ -61,9 +71,11 @@ async function startServer() {
         source: 'api_trigger'
       });
 
+      console.log(`[AgriSound API] Trigger scheduled for: ${new Date(scheduledTime).toISOString()}`);
+
       res.json({ 
         status: "ok", 
-        message: `Playback scheduled for ${soundId} in 30 seconds. Main power ensured.`, 
+        message: `Playback scheduled for ${soundId} in 30 seconds. Power systems enabled.`, 
         timestamp: new Date().toISOString(),
         scheduledPlayTime: new Date(scheduledTime).toISOString()
       });
