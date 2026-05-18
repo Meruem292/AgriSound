@@ -91,6 +91,7 @@ const App: React.FC = () => {
     let unsubSounds = () => {};
     let unsubManual = () => {};
     let unsubScheduledTriggers = () => {};
+    let unsubRemoteState = () => {};
 
     const initializeSubscriptions = async () => {
       // Try to become leader immediately so playback works without waiting 5s
@@ -104,6 +105,11 @@ const App: React.FC = () => {
       unsubScheduledTriggers();
 
       unsubPower = firebaseService.subscribeToDevicePower(setIsDevicePowered);
+      unsubRemoteState = firebaseService.subscribeToDeviceState(async (remoteState) => {
+        if (remoteState) {
+          await databaseService.updateDeviceState(remoteState);
+        }
+      });
       unsubScheds = firebaseService.subscribeToSchedules(async (remoteSchedules) => {
         await databaseService.ensureInit();
         const localSchedules = await databaseService.getSchedules();
@@ -171,17 +177,21 @@ const App: React.FC = () => {
         // Handle Scheduled Delay from API
         const delay = (trigger as any).scheduledPlayTimestamp ? (trigger as any).scheduledPlayTimestamp - now : 0;
 
-        const executePlay = () => {
+        const executePlay = async () => {
           // Clear pending state
           if ((window as any)._pendingManualTrigger?.timestamp === trigger.timestamp) {
             (window as any)._pendingManualTrigger = null;
           }
 
-          // Check power exactly at execution time
+          // Force power check and re-enable if necessary
+          // Sometimes the worker might turn it off right as we execute
           if (!devicePowerRef.current) {
-            console.log("[AgriSound] Skipping execution - Device Power is OFF (User must have turned it off manually)");
-            return;
+            console.log("[AgriSound] Power was OFF at execute time. Re-enabling...");
+            await firebaseService.setDevicePower(true);
+            // Small wait for the power state to propagate to refs
+            await new Promise(r => setTimeout(r, 600));
           }
+
           console.log(`[AgriSound] Executing playback for ${trigger.soundId} after ${delay > 0 ? delay : 0}ms delay`);
           databaseService.performPlayback('manual', undefined, trigger.soundId);
         };
@@ -280,7 +290,11 @@ const App: React.FC = () => {
         } else {
           // Peek manual trigger if possible (using a global or shared state)
           const pendingTrigger = (window as any)._pendingManualTrigger;
-          if (pendingTrigger && pendingTrigger.scheduledPlayTimestamp > nowMs && (pendingTrigger.scheduledPlayTimestamp - nowMs) < 60000) {
+          // Keep power ON if a trigger was scheduled to start in the last 15 seconds (to allow WAKING -> ACTIVE transition)
+          // OR if it's upcoming in the next 60 seconds
+          if (pendingTrigger && 
+              pendingTrigger.scheduledPlayTimestamp > (nowMs - 15000) && 
+              (pendingTrigger.scheduledPlayTimestamp - nowMs) < 60000) {
             upcomingTrigger = true;
           }
         }
@@ -298,7 +312,8 @@ const App: React.FC = () => {
           const lastPlaybackAge = nowMs - (deviceState.lastSyncTime || 0);
           const isSystemIdle = deviceState.status === DeviceStatus.SLEEPING;
           
-          if (isSystemIdle && lastPlaybackAge > 5000) {
+          // Be more patient before turning off (15s instead of 5s)
+          if (isSystemIdle && lastPlaybackAge > 15000) {
             console.log("[AgriSound] Leader: Powering Off Hardware (System Idle)");
             await firebaseService.setDevicePower(false);
           }
@@ -336,6 +351,7 @@ const App: React.FC = () => {
       unsubSounds();
       unsubManual();
       unsubScheduledTriggers();
+      unsubRemoteState();
       clearInterval(workerInterval);
     };
   }, [isOnline]); // Depend on online status to re-init subscriptions if needed

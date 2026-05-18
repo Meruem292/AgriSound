@@ -255,6 +255,22 @@ export const firebaseService = {
     return () => off(triggerRef);
   },
 
+  setDeviceStateRemote: async (state: any) => {
+    const db = getDb();
+    if (!db) return;
+    await set(ref(db, 'system/deviceState'), state);
+  },
+
+  subscribeToDeviceState: (callback: (state: any) => void) => {
+    const db = getDb();
+    if (!db) return () => {};
+    const stateRef = ref(db, 'system/deviceState');
+    onValue(stateRef, (snapshot) => {
+      callback(snapshot.val());
+    });
+    return () => off(stateRef);
+  },
+
   tryBecomeLeader: async (clientId: string): Promise<boolean> => {
     const db = getDb();
     if (!db) return false;

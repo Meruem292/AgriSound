@@ -17,6 +17,7 @@ const Dashboard: React.FC<DashboardProps> = ({ isDevicePowered, isUnlocked, isLe
   const [isUpdatingCloud, setIsUpdatingCloud] = useState(false);
   const [activePlaybackId, setActivePlaybackId] = useState<string | null>(null);
   const [settings, setSettings] = useState<SystemSettings>({ detectionSoundId: '', isDetectionEnabled: false });
+  const [isMainSwitchOn, setIsMainSwitchOn] = useState(false);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -34,6 +35,10 @@ const Dashboard: React.FC<DashboardProps> = ({ isDevicePowered, isUnlocked, isLe
       setSettings(remoteSettings);
     });
 
+    const unsubMain = firebaseService.subscribeToMainSwitch((isOn) => {
+      setIsMainSwitchOn(isOn);
+    });
+
     const unsubManual = firebaseService.subscribeToManualTriggers((trigger) => {
       if (trigger) {
         setActivePlaybackId(trigger.soundId);
@@ -45,9 +50,19 @@ const Dashboard: React.FC<DashboardProps> = ({ isDevicePowered, isUnlocked, isLe
       clearInterval(interval);
       unsubSounds();
       unsubSettings();
+      unsubMain();
       unsubManual();
     };
   }, []);
+
+  const toggleMainSwitch = async () => {
+    setIsUpdatingCloud(true);
+    try {
+      await firebaseService.setMainSwitch(!isMainSwitchOn);
+    } finally {
+      setIsUpdatingCloud(false);
+    }
+  };
 
   const toggleDevicePower = async () => {
     setIsUpdatingCloud(true);
@@ -139,11 +154,37 @@ const Dashboard: React.FC<DashboardProps> = ({ isDevicePowered, isUnlocked, isLe
       </div>
 
       {/* Main Control Panel */}
-      <div className="grid grid-cols-1 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {/* Main System Switch */}
+        <div 
+          onClick={toggleMainSwitch}
+          className={`group p-8 rounded-[48px] border-2 flex flex-col justify-between transition-all duration-500 cursor-pointer select-none active:scale-[0.96] ${
+            isMainSwitchOn 
+            ? 'bg-green-600 border-green-500 text-white shadow-2xl shadow-green-200' 
+            : 'bg-white border-slate-100 text-slate-400'
+          }`}
+        >
+          <div className="flex justify-between items-start mb-12">
+            <div className={`p-5 rounded-3xl backdrop-blur-md transition-all ${isMainSwitchOn ? 'bg-white/20' : 'bg-slate-100'}`}>
+              <Zap size={36} className={isMainSwitchOn ? 'animate-pulse' : ''} />
+            </div>
+            {isUpdatingCloud && <RefreshCw size={24} className="animate-spin opacity-40" />}
+          </div>
+          <div>
+            <h3 className="font-black text-xs uppercase tracking-[0.25em] opacity-70 mb-2">Main Power (Master)</h3>
+            <p className="text-4xl font-black tracking-tighter leading-none">
+              {isMainSwitchOn ? 'MASTER ON' : 'MASTER OFF'}
+            </p>
+            <p className="text-[10px] font-bold opacity-60 mt-4 leading-relaxed">
+              {isMainSwitchOn ? 'Master system active. Automation enabled.' : 'Master system killed. All triggers disabled.'}
+            </p>
+          </div>
+        </div>
+
         {/* Device Power Button */}
         <div 
           onClick={toggleDevicePower}
-          className={`group p-8 rounded-[48px] border-2 flex flex-col justify-between transition-all duration-500 cursor-pointer select-none active:scale-[0.96] h-full ${
+          className={`group p-8 rounded-[48px] border-2 flex flex-col justify-between transition-all duration-500 cursor-pointer select-none active:scale-[0.96] ${
             isDevicePowered 
             ? 'bg-blue-600 border-blue-500 text-white shadow-2xl shadow-blue-200' 
             : 'bg-white border-slate-100 text-slate-400'
@@ -153,17 +194,37 @@ const Dashboard: React.FC<DashboardProps> = ({ isDevicePowered, isUnlocked, isLe
             <div className={`p-5 rounded-3xl backdrop-blur-md transition-all ${isDevicePowered ? 'bg-white/20' : 'bg-slate-100'}`}>
               <Power size={36} className={isDevicePowered ? 'animate-pulse' : ''} />
             </div>
-            {isUpdatingCloud && <RefreshCw size={24} className="animate-spin opacity-40" />}
           </div>
           <div>
-            <h3 className="font-black text-xs uppercase tracking-[0.25em] opacity-70 mb-2">Main Hardware Power</h3>
+            <h3 className="font-black text-xs uppercase tracking-[0.25em] opacity-70 mb-2">Hardware Power (Relay)</h3>
             <p className="text-4xl font-black tracking-tighter leading-none">
-              {isDevicePowered ? 'POWERED ON' : 'POWERED OFF'}
+              {isDevicePowered ? 'HW RELAY ON' : 'HW RELAY OFF'}
             </p>
             <p className="text-[10px] font-bold opacity-60 mt-4 leading-relaxed">
-              {isDevicePowered ? 'Hardware active. Ready for triggers.' : 'Hardware disabled. Triggers will not fire.'}
+              {isDevicePowered ? 'Signal path active.' : 'Signal path cut. Energy saving.'}
             </p>
           </div>
+        </div>
+      </div>
+
+      {/* Browser Arming Status */}
+      <div className={`rounded-[32px] p-6 flex items-center gap-5 shadow-sm border-2 transition-all ${
+        isUnlocked 
+        ? 'bg-green-50 border-green-100 text-green-700' 
+        : 'bg-red-50 border-red-100 text-red-600 animate-pulse'
+      }`}>
+        <div className={`w-14 h-14 rounded-[20px] flex items-center justify-center shrink-0 ${isUnlocked ? 'bg-green-100' : 'bg-red-100'}`}>
+          {isUnlocked ? <ShieldCheck size={24} /> : <ShieldAlert size={24} />}
+        </div>
+        <div className="space-y-1">
+          <h4 className="text-[11px] font-black uppercase tracking-widest leading-none">
+            Browser Audio {isUnlocked ? 'Armed' : 'LOCKED'}
+          </h4>
+          <p className="text-[10px] font-bold uppercase tracking-wider leading-relaxed opacity-80">
+            {isUnlocked 
+              ? 'This tab is ready to play sound triggers. Best to keep this tab open and active.' 
+              : 'CRITICAL: You must click the UNLOCK button to allow this client to play sounds.'}
+          </p>
         </div>
       </div>
 

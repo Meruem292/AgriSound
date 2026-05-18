@@ -1,5 +1,6 @@
 
 import { DeviceState, DeviceStatus, Schedule, SoundFile, PlaybackLog, ScheduleType } from '../types';
+import { firebaseService } from './firebaseService';
 
 const DB_NAME = 'AgriSoundDB';
 const DB_VERSION = 5; // Bumped to 5 to ensure keyPath: 'id' on all stores
@@ -160,6 +161,10 @@ export const databaseService = {
     const current = await databaseService.getDeviceState();
     const next = { ...current, ...updates, id: 'main' };
     await localDB.put(STORES.STATE, next);
+    // Sync to Firebase
+    firebaseService.setDeviceStateRemote(next).catch(err => {
+      console.warn("[AgriSound] Cloud state sync failed:", err);
+    });
     return next;
   },
 
@@ -206,12 +211,13 @@ export const databaseService = {
     }
 
     await databaseService.updateDeviceState({ status: DeviceStatus.WAKING });
-    await new Promise(r => setTimeout(r, 800)); // Reduced from 6000ms for faster response
+    await new Promise(r => setTimeout(r, 1000));
     await databaseService.updateDeviceState({ status: DeviceStatus.ACTIVE });
 
-    // Mutex to prevent overlapping sounds from the same client
+    // Mutex
     if ((window as any)._isCurrentlyPlaying) {
       console.log("[AgriSound] Skipping playback - already playing.");
+      setTimeout(() => databaseService.updateDeviceState({ status: DeviceStatus.SLEEPING }), 2000);
       return;
     }
     (window as any)._isCurrentlyPlaying = true;
@@ -221,7 +227,8 @@ export const databaseService = {
         const sound = targetSounds[Math.floor(Math.random() * targetSounds.length)];
         await databaseService.updateDeviceState({ 
           lastSoundPlayed: sound.name,
-          lastWakeTime: Date.now()
+          lastWakeTime: Date.now(),
+          status: DeviceStatus.ACTIVE
         });
 
         const audio = new Audio(sound.url);
@@ -229,6 +236,7 @@ export const databaseService = {
 
         await new Promise((resolve) => {
           audio.onplay = () => {
+            console.log(`[AgriSound] Playing: ${sound.name}`);
             databaseService.addLog({
               timestamp: Date.now(),
               soundName: sound.name,
@@ -238,11 +246,11 @@ export const databaseService = {
           };
           audio.onended = () => resolve(true);
           audio.onerror = (e) => {
-            console.error("Audio playback error:", e);
+            console.error("Audio error:", e);
             resolve(false);
           };
           audio.play().catch(err => {
-            console.error("Playback blocked. Use the UNLOCK button.", err);
+            console.error("PLAYBACK BLOCKED - App MUST be unlocked by user tap", err);
             resolve(false);
           });
         });
@@ -251,12 +259,11 @@ export const databaseService = {
       }
     } finally {
       (window as any)._isCurrentlyPlaying = false;
+      await databaseService.updateDeviceState({ 
+        status: DeviceStatus.SLEEPING, 
+        lastSyncTime: Date.now() 
+      });
     }
-
-    await databaseService.updateDeviceState({ 
-      status: DeviceStatus.SLEEPING, 
-      lastSyncTime: Date.now() 
-    });
   },
 
   triggerManualPlay: async () => {
