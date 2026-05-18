@@ -7,30 +7,33 @@ import { Schedule, SoundFile, SystemSettings } from '../types';
  * Robust environment variable retrieval for both local and cloud environments.
  */
 const getEnv = (key: string): string | undefined => {
-  // 1. Try global process.env (Node.js / Vercel)
-  const g = (typeof globalThis !== 'undefined' ? globalThis : typeof window !== 'undefined' ? window : {}) as any;
-  const proc = g.process || {};
-  const env = proc.env || {};
+  const metaEnv = (import.meta as any).env || {};
+  const procEnv = (typeof process !== 'undefined' ? process.env : {}) || {};
 
-  if (env[key]) return env[key];
-  if (env[`VITE_${key}`]) return env[`VITE_${key}`];
-  if (env[`NEXT_PUBLIC_${key}`]) return env[`NEXT_PUBLIC_${key}`];
+  const check = (k: string) => {
+    if (metaEnv[k]) return metaEnv[k];
+    if (procEnv[k]) return procEnv[k];
+    return undefined;
+  };
 
-  // 2. Try import.meta.env with string bypass to avoid CJS syntax errors
-  try {
-    const meta = (g as any)['import' + '.meta'];
-    if (meta && meta.env) {
-      const venv = meta.env;
-      if (venv[key]) return venv[key];
-      if (venv[`VITE_${key}`]) return venv[`VITE_${key}`];
-    }
-  } catch (e) {}
+  // 1. Exact match
+  let val = check(key);
+  if (val) return val;
 
-  // 3. Fallback to suffix search
+  // 2. Framework prefixes
+  const prefixes = ['VITE_', 'NEXT_PUBLIC_', 'VITE_NEXT_PUBLIC_'];
+  for (const p of prefixes) {
+    val = check(`${p}${key}`);
+    if (val) return val;
+  }
+
+  // 3. Scan all keys for suffix match
+  const allKeys = [...Object.keys(metaEnv), ...Object.keys(procEnv)];
   const upperKey = key.toUpperCase();
-  for (const k in env) {
+  for (const k of allKeys) {
     if (k.toUpperCase().endsWith(upperKey)) {
-      return env[k];
+      const found = check(k);
+      if (found) return found;
     }
   }
 
@@ -54,10 +57,7 @@ const initFirebase = (): FirebaseApp | null => {
   };
 
   if (!config.apiKey || !config.databaseURL) {
-    console.error("Firebase Config Missing. Keys checked:", Object.keys(config).filter(k => !(config as any)[k]));
-    console.log("Current Environment Check:");
-    console.log("- FIREBASE_API_KEY available:", !!getEnv('FIREBASE_API_KEY'));
-    console.log("- FIREBASE_DATABASE_URL available:", !!getEnv('FIREBASE_DATABASE_URL'));
+    console.error("Firebase Config Missing:", config);
     return null;
   }
 
@@ -108,7 +108,7 @@ export const firebaseService = {
   setMainSwitch: async (isOn: boolean) => {
     const db = getDb();
     if (!db) {
-      console.error("Firebase not connected. Cannot toggle Main Switch.");
+      alert("Firebase not connected. Cannot toggle Main Switch.");
       return;
     }
     await set(ref(db, 'system/mainSwitch'), isOn);
@@ -130,7 +130,7 @@ export const firebaseService = {
   setDevicePower: async (isPowered: boolean) => {
     const db = getDb();
     if (!db) {
-      console.error("Firebase not connected. Cannot toggle Device Power.");
+      alert("Firebase not connected. Cannot toggle Device Power.");
       return;
     }
     await set(ref(db, 'system/devicePower'), isPowered);
@@ -144,28 +144,10 @@ export const firebaseService = {
       const data = snapshot.val();
       callback({
         detectionSoundId: data?.detectionSoundId || '',
-        isDetectionEnabled: data?.isDetectionEnabled ?? false,
-        apiTrigger: data?.apiTrigger ?? false
+        isDetectionEnabled: data?.isDetectionEnabled ?? false
       });
     });
     return () => off(settingsRef);
-  },
-
-  getSystemSettings: async (): Promise<SystemSettings> => {
-    const db = getDb();
-    if (!db) return { detectionSoundId: '', isDetectionEnabled: false, apiTrigger: false };
-    const settingsRef = ref(db, 'system/settings');
-    
-    return new Promise((resolve) => {
-      onValue(settingsRef, (snapshot) => {
-        const data = snapshot.val();
-        resolve({
-          detectionSoundId: data?.detectionSoundId || '',
-          isDetectionEnabled: data?.isDetectionEnabled ?? false,
-          apiTrigger: data?.apiTrigger ?? false
-        });
-      }, { onlyOnce: true });
-    });
   },
 
   updateSystemSettings: async (settings: Partial<SystemSettings>) => {
@@ -273,17 +255,6 @@ export const firebaseService = {
     return () => off(triggerRef);
   },
 
-  getAllSounds: async (): Promise<SoundFile[]> => {
-    const db = getDb();
-    if (!db) return [];
-    const soundsRef = ref(db, 'sounds');
-    return new Promise((resolve) => {
-      onValue(soundsRef, (snapshot) => {
-        const data = snapshot.val();
-        resolve(data ? (Object.values(data) as SoundFile[]) : []);
-      }, { onlyOnce: true });
-    });
-  },
   tryBecomeLeader: async (clientId: string): Promise<boolean> => {
     const db = getDb();
     if (!db) return false;

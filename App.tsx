@@ -132,10 +132,6 @@ const App: React.FC = () => {
       unsubManual = firebaseService.subscribeToManualTriggers(async (trigger) => {
         if (!trigger || !locallyUnlockedRef.current) return;
         
-        // Only the leader client should play to avoid multiple tabs screaming
-        const leader = await firebaseService.tryBecomeLeader(clientId);
-        if (!leader) return;
-
         // Avoid re-playing old triggers or the same trigger multiple times
         if (trigger.timestamp <= lastManualTriggerRef.current) return;
         lastManualTriggerRef.current = trigger.timestamp;
@@ -148,10 +144,6 @@ const App: React.FC = () => {
 
       unsubScheduledTriggers = firebaseService.subscribeToScheduledTriggers(async (trigger) => {
         if (!trigger || !locallyUnlockedRef.current) return;
-
-        // Only the leader client should play
-        const leader = await firebaseService.tryBecomeLeader(clientId);
-        if (!leader) return;
 
         // Use a ref to avoid re-playing the same scheduled trigger
         const lastTriggerTime = (window as any)._lastScheduledTriggerTime || 0;

@@ -4,28 +4,22 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "tsx server.ts",
+    "dev": "vite",
     "build": "vite build",
-    "start": "tsx server.ts",
+    "preview": "vite preview",
     "lint": "tsc --noEmit"
   },
   "dependencies": {
-    "@supabase/supabase-js": "2.48.1",
-    "cors": "^2.8.6",
-    "express": "^5.2.1",
-    "firebase": "^12.9.0",
-    "lucide-react": "0.475.0",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
-    "tsx": "^4.22.0"
+    "lucide-react": "0.475.0",
+    "@supabase/supabase-js": "2.48.1",
+    "firebase": "^12.9.0"
   },
   "devDependencies": {
-    "@types/cors": "^2.8.19",
-    "@types/express": "^5.0.6",
     "@types/node": "^22.14.0",
     "@vitejs/plugin-react": "^5.0.0",
-    "esbuild": "^0.28.0",
     "typescript": "~5.8.2",
-    "vite": "^6.4.2"
+    "vite": "^6.2.0"
   }
 }
