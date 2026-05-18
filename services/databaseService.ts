@@ -176,7 +176,10 @@ export const databaseService = {
   },
 
   performPlayback: async (triggerType: 'manual' | 'scheduled', scheduleId?: string, specificSoundId?: string) => {
-    await databaseService.ensureInit();
+    const deviceState = await databaseService.getDeviceState();
+    
+    // Check if system is waking or active, or if we should skip
+    // We don't strictly block here if status is SLEEPING because we'll transition to WAKING
     
     const allSounds = await databaseService.getSounds();
     if (allSounds.length === 0) {
@@ -203,40 +206,51 @@ export const databaseService = {
     }
 
     await databaseService.updateDeviceState({ status: DeviceStatus.WAKING });
-    await new Promise(r => setTimeout(r, 6000));
+    await new Promise(r => setTimeout(r, 800)); // Reduced from 6000ms for faster response
     await databaseService.updateDeviceState({ status: DeviceStatus.ACTIVE });
 
-    for (let i = 0; i < cycles; i++) {
-      const sound = targetSounds[Math.floor(Math.random() * targetSounds.length)];
-      await databaseService.updateDeviceState({ 
-        lastSoundPlayed: sound.name,
-        lastWakeTime: Date.now()
-      });
+    // Mutex to prevent overlapping sounds from the same client
+    if ((window as any)._isCurrentlyPlaying) {
+      console.log("[AgriSound] Skipping playback - already playing.");
+      return;
+    }
+    (window as any)._isCurrentlyPlaying = true;
 
-      const audio = new Audio(sound.url);
-      audio.crossOrigin = "anonymous"; // Needed if Supabase has CORS restricted
-
-      await new Promise((resolve) => {
-        audio.onplay = () => {
-          databaseService.addLog({
-            timestamp: Date.now(),
-            soundName: sound.name,
-            triggerType,
-            status: 'success'
-          });
-        };
-        audio.onended = () => resolve(true);
-        audio.onerror = (e) => {
-          console.error("Audio playback error:", e);
-          resolve(false);
-        };
-        audio.play().catch(err => {
-          console.error("Playback blocked. Use the UNLOCK button.", err);
-          resolve(false);
+    try {
+      for (let i = 0; i < cycles; i++) {
+        const sound = targetSounds[Math.floor(Math.random() * targetSounds.length)];
+        await databaseService.updateDeviceState({ 
+          lastSoundPlayed: sound.name,
+          lastWakeTime: Date.now()
         });
-      });
 
-      if (i < cycles - 1) await new Promise(r => setTimeout(r, 1500));
+        const audio = new Audio(sound.url);
+        audio.crossOrigin = "anonymous";
+
+        await new Promise((resolve) => {
+          audio.onplay = () => {
+            databaseService.addLog({
+              timestamp: Date.now(),
+              soundName: sound.name,
+              triggerType,
+              status: 'success'
+            });
+          };
+          audio.onended = () => resolve(true);
+          audio.onerror = (e) => {
+            console.error("Audio playback error:", e);
+            resolve(false);
+          };
+          audio.play().catch(err => {
+            console.error("Playback blocked. Use the UNLOCK button.", err);
+            resolve(false);
+          });
+        });
+
+        if (i < cycles - 1) await new Promise(r => setTimeout(r, 1000));
+      }
+    } finally {
+      (window as any)._isCurrentlyPlaying = false;
     }
 
     await databaseService.updateDeviceState({ 

@@ -3,7 +3,7 @@ import express from "express";
 import path from "path";
 import { createServer as createViteServer } from "vite";
 import { initializeApp, getApp, getApps } from 'firebase/app';
-import { getDatabase, ref, set } from 'firebase/database';
+import { getDatabase, ref, set, get } from 'firebase/database';
 
 // Firebase config for the server
 const firebaseConfig = {
@@ -40,16 +40,32 @@ async function startServer() {
       
       const soundId = (req.query.soundId as string) || (req.body?.soundId as string) || 'default_alert';
 
+      // 1. Ensure Device Power is ON
+      const devicePowerRef = ref(db, 'system/devicePower');
+      const devicePowerSnap = await get(devicePowerRef);
+      const isPoweredOn = devicePowerSnap.val() === true;
+
+      if (!isPoweredOn) {
+        console.log("[AgriSound API] Turning ON Device Power...");
+        await set(devicePowerRef, true);
+      }
+
+      // 2. Schedule playback with 30s delay
+      const now = Date.now();
+      const scheduledTime = now + 30000;
+
       await set(ref(db, 'system/manualTrigger'), {
         soundId,
-        timestamp: Date.now(),
+        timestamp: now,
+        scheduledPlayTimestamp: scheduledTime,
         source: 'api_trigger'
       });
 
       res.json({ 
         status: "ok", 
-        message: `Playback triggered: ${soundId}`, 
-        timestamp: new Date().toISOString()
+        message: `Playback scheduled for ${soundId} in 30 seconds. Main power ensured.`, 
+        timestamp: new Date().toISOString(),
+        scheduledPlayTime: new Date(scheduledTime).toISOString()
       });
     } catch (error: any) {
       console.error("API Play Error:", error);

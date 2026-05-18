@@ -17,6 +17,7 @@ const App: React.FC = () => {
   const [isLocallyUnlocked, setIsLocallyUnlocked] = useState(false);
   const [clientId] = useState(() => Math.random().toString(36).substring(2, 15));
   const [isLeader, setIsLeader] = useState(false);
+  const isLeaderRef = useRef(isLeader);
   
   // States synced with Firebase
   const [isDevicePowered, setIsDevicePowered] = useState(false);
@@ -25,6 +26,10 @@ const App: React.FC = () => {
   const devicePowerRef = useRef(isDevicePowered);
   const locallyUnlockedRef = useRef(isLocallyUnlocked);
   const lastManualTriggerRef = useRef<number>(Date.now());
+
+  useEffect(() => {
+    isLeaderRef.current = isLeader;
+  }, [isLeader]);
 
   useEffect(() => {
     devicePowerRef.current = isDevicePowered;
@@ -87,7 +92,11 @@ const App: React.FC = () => {
     let unsubManual = () => {};
     let unsubScheduledTriggers = () => {};
 
-    const initializeSubscriptions = () => {
+    const initializeSubscriptions = async () => {
+      // Try to become leader immediately so playback works without waiting 5s
+      const amLeader = await firebaseService.tryBecomeLeader(clientId);
+      setIsLeader(amLeader);
+
       unsubPower();
       unsubScheds();
       unsubSounds();
@@ -130,28 +139,55 @@ const App: React.FC = () => {
       });
 
       unsubManual = firebaseService.subscribeToManualTriggers(async (trigger) => {
-        if (!trigger || !locallyUnlockedRef.current) return;
+        // Only the leader client should play audio to prevent echoing across tabs/devices
+        // AND client must be unlocked (user interaction granted)
+        if (!trigger || !locallyUnlockedRef.current || !isLeaderRef.current) return;
         
         // Avoid re-playing old triggers or the same trigger multiple times
         if (trigger.timestamp <= lastManualTriggerRef.current) return;
         lastManualTriggerRef.current = trigger.timestamp;
 
-        console.log(`[AgriSound] Remote Manual Trigger: ${trigger.soundId}`);
+        console.log(`[AgriSound] Remote Manual Trigger (Leader): ${trigger.soundId}`);
         
-        // Use the unified playback logic which handles state correctly
-        databaseService.performPlayback('manual', undefined, trigger.soundId);
+        // Handle Scheduled Delay from API
+        const now = Date.now();
+        const delay = (trigger as any).scheduledPlayTimestamp ? (trigger as any).scheduledPlayTimestamp - now : 0;
+
+        const executePlay = () => {
+          // Check power exactly at execution time
+          if (!devicePowerRef.current) {
+            console.log("[AgriSound] Skipping execution - Device Power is OFF");
+            return;
+          }
+          console.log(`[AgriSound] Executing playback for ${trigger.soundId} after ${delay > 0 ? delay : 0}ms delay`);
+          databaseService.performPlayback('manual', undefined, trigger.soundId);
+        };
+
+        if (delay > 0) {
+          console.log(`[AgriSound] Playback scheduled in ${Math.round(delay/1000)}s...`);
+          setTimeout(executePlay, delay);
+        } else {
+          executePlay();
+        }
       });
 
       unsubScheduledTriggers = firebaseService.subscribeToScheduledTriggers(async (trigger) => {
-        if (!trigger || !locallyUnlockedRef.current) return;
+        // Only the leader client should play audio
+        if (!trigger || !locallyUnlockedRef.current || !isLeaderRef.current) return;
 
         // Use a ref to avoid re-playing the same scheduled trigger
         const lastTriggerTime = (window as any)._lastScheduledTriggerTime || 0;
         if (trigger.timestamp <= lastTriggerTime) return;
         (window as any)._lastScheduledTriggerTime = trigger.timestamp;
 
-        console.log(`[AgriSound] Remote Scheduled Trigger: ${trigger.soundId} for schedule ${trigger.scheduleId}`);
+        console.log(`[AgriSound] Remote Scheduled Trigger (Leader): ${trigger.soundId} for schedule ${trigger.scheduleId}`);
         
+        // Final power check before playback
+        if (!devicePowerRef.current) {
+          console.log("[AgriSound] Skipping scheduled trigger - Device Power is OFF");
+          return;
+        }
+
         // Play audio locally
         databaseService.performPlayback('scheduled', trigger.scheduleId, trigger.soundId);
       });

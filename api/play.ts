@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { initializeApp, getApp, getApps } from 'firebase/app';
-import { getDatabase, ref, set } from 'firebase/database';
+import { getDatabase, ref, set, get } from 'firebase/database';
 
 const config = {
   apiKey: process.env.FIREBASE_API_KEY,
@@ -24,16 +24,31 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // Default sound ID or from query/body
     const soundId = (req.query.soundId as string) || (req.body?.soundId as string) || 'default_alert';
 
+    // 1. Ensure Device Power is ON
+    const devicePowerRef = ref(db, 'system/devicePower');
+    const devicePowerSnap = await get(devicePowerRef);
+    const isPoweredOn = devicePowerSnap.val() === true;
+
+    if (!isPoweredOn) {
+      await set(devicePowerRef, true);
+    }
+
+    // 2. Schedule playback with 30s delay
+    const now = Date.now();
+    const scheduledTime = now + 30000;
+
     await set(ref(db, 'system/manualTrigger'), {
       soundId,
-      timestamp: Date.now(),
+      timestamp: now,
+      scheduledPlayTimestamp: scheduledTime,
       source: 'api_trigger'
     });
 
     res.status(200).json({ 
       status: "ok", 
-      message: `Playback triggered for sound: ${soundId}`, 
-      timestamp: new Date().toISOString()
+      message: `Playback scheduled for sound: ${soundId} in 30 seconds. Main power ensured.`, 
+      timestamp: new Date().toISOString(),
+      scheduledPlayTime: new Date(scheduledTime).toISOString()
     });
   } catch (error: any) {
     console.error("API Play Error:", error);
