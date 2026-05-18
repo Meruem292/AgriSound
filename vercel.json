@@ -1,0 +1,8 @@
+{
+  "rewrites": [
+    { "source": "/api/ping", "destination": "/api/ping.ts" },
+    { "source": "/api/play", "destination": "/api/play.ts" },
+    { "source": "/api/health", "destination": "/api/health.ts" },
+    { "source": "/(.*)", "destination": "/" }
+  ]
+}
